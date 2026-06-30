@@ -1,92 +1,157 @@
 # VideoMMD
 
-This project contains an engineering-oriented scaffold for multimodal short-video
-fake-news detection. The current recommended path is:
+This repo currently uses `ms-swift` + `InternVL-8B` for video fake-news detection.
+The active workflow is:
 
-- `InternVL3-8B`
-- video-only input
-- `real / fake` instruction SFT
-- LoRA fine-tuning
-- ExMRD temporal splits for `FakeTT` and `FakeSV`
+- build Swift `jsonl` data
+- train with native `swift sft`
+- infer with native `swift infer`
+- evaluate `acc / macro_f1 / macro_precision / macro_recall` with an external script
 
-## Layout
+Current active configs:
 
-- `train.py`: training entrypoint
-- `configs/`: dataset-specific YAML configs
-- `libs/data/`: dataset loading and split building
-- `libs/model/`: model wrappers
-- `libs/utils/`: logging and shared helpers
-- `scripts/build_swift_fakett.py`: export `data/fakett` into ms-swift JSONL
-- `scripts/swift_train_fakett.sh`: 4-GPU ms-swift LoRA training for FakeTT
-- `scripts/swift_infer_fakett.sh`: ms-swift inference on FakeTT test JSONL
+- `configs/swift/fakett.yaml`
+- `configs/swift/fakett_infer.yaml`
+- `configs/swift/fakesv.yaml`
+- `configs/swift/fakesv_infer.yaml`
 
-## Recommended: Swift SFT
+Current active scripts:
 
-The simpler and more stable path is now `ms-swift`, not the custom Trainer.
-It keeps the setup closer to the `FakeSV-VLM` training style, but removes the
-paper-specific custom modules.
+- `scripts/build_swift_dataset.py`
+- `scripts/resolve_swift_adapter.py`
+- `scripts/evaluate_swift_predictions.py`
 
-### 1. Build FakeTT JSONL
+## FakeTT
+
+### Build JSONL
 
 ```bash
-python scripts/build_swift_fakett.py \
-  --annotation-path data/fakett/data.json \
-  --video-root /data2/573ops_ser/data/FakeTT/FakeTT/video \
-  --split-dir external/ExMRD/data/FakeTT/vids \
-  --output-dir data/swift/fakett
+python scripts/build_swift_dataset.py \
+  --dataset fakett \
+  --video-root /data2/573ops_ser/data/FakeTT/FakeTT/video
 ```
 
-This script uses the same `FakeTT` annotation source as the rest of the repo:
+Outputs:
 
-- `data/fakett/data.json`
-- `external/ExMRD/data/FakeTT/vids/vid_time3_{train,valid,test}.txt`
+- `data/swift/fakett/fakett_train.jsonl`
+- `data/swift/fakett/fakett_val.jsonl`
+- `data/swift/fakett/fakett_test.jsonl`
 
-### 2. Run 4-GPU Swift training
+### Train
 
 ```bash
-CUDA_VISIBLE_DEVICES=0,1,2,3 \
-bash scripts/swift_train_fakett.sh
+swift sft configs/swift/fakett.yaml
 ```
 
-### 3. Run Swift inference
+Current training strategy:
+
+- `8` GPUs
+- `per_device_train_batch_size: 2`
+- `gradient_accumulation_steps: 2`
+
+### Infer
+
+If you already know the checkpoint path:
 
 ```bash
-ADAPTER_PATH=/path/to/checkpoint \
-bash scripts/swift_infer_fakett.sh
+swift infer configs/swift/fakett_infer.yaml \
+  --adapter /data2/573ops_ser/projects/videommd/outputs/swift/fakett/your_run/checkpoint-xx
 ```
 
-## Native Trainer
-
-The repo still keeps the native PyTorch training path for debugging and custom
-experiments:
-
-- `configs/fakesv.yaml`
-- `configs/fakett.yaml`
-
-Train FakeTT:
+If you need to resolve the adapter path first:
 
 ```bash
-torchrun --nproc_per_node=4 train.py --config configs/fakett.yaml
+python scripts/resolve_swift_adapter.py \
+  --output-dir /data2/573ops_ser/projects/videommd/outputs/swift/fakett/your_run
 ```
 
-## ExMRD Alignment
+Then infer:
 
-- `FakeTT` local annotations and `ExMRD` split ids are exactly aligned: `1992 / 1992`
-- `FakeSV` local annotations and `ExMRD` split ids are exactly aligned: `5495 / 5495`
-- `FakeSV` follows the same default binary policy as `ExMRD`: drop `è¾Ÿè°£`, keep `å‡ / çœŸ`
+```bash
+ADAPTER_PATH=$(python scripts/resolve_swift_adapter.py \
+  --output-dir /data2/573ops_ser/projects/videommd/outputs/swift/fakett/your_run)
 
-## Why The Current Native Baseline Can Lag Behind FakeSV-VLM
+swift infer configs/swift/fakett_infer.yaml \
+  --adapter "$ADAPTER_PATH" \
+  --result_path /data2/573ops_ser/projects/videommd/outputs/swift/fakett/fakett_test_predictions.jsonl
+```
 
-- `FakeSV-VLM` uses a mature `ms-swift` training stack, while the native path here
-  is a lighter custom reimplementation.
-- Their paper baseline also uses a more tuned prompt, data packing, and training
-  recipe than our first-pass native scaffold.
-- If you compare against their full reported numbers, remember their reported
-  method is not just â€œplain LoRA SFTâ€; it also includes their paper-specific
-  adapter design. Our Swift path here intentionally removes those extras.
+### Evaluate
+
+```bash
+python scripts/evaluate_swift_predictions.py \
+  --dataset-jsonl data/swift/fakett/fakett_test.jsonl \
+  --prediction-jsonl /data2/573ops_ser/projects/videommd/outputs/swift/fakett/fakett_test_predictions.jsonl
+```
+
+Save metrics to file:
+
+```bash
+python scripts/evaluate_swift_predictions.py \
+  --dataset-jsonl data/swift/fakett/fakett_test.jsonl \
+  --prediction-jsonl /data2/573ops_ser/projects/videommd/outputs/swift/fakett/fakett_test_predictions.jsonl \
+  --output-json /data2/573ops_ser/projects/videommd/outputs/swift/fakett/fakett_test_metrics.json
+```
+
+## FakeSV
+
+### Build JSONL
+
+```bash
+python scripts/build_swift_dataset.py \
+  --dataset fakesv \
+  --video-root /data2/573ops_ser/data/FakeSV/video
+```
+
+Default binary export policy:
+
+- `Õæ -> real`
+- `¼Ù -> fake`
+- `±ÙÒ¥ -> drop`
+
+Outputs:
+
+- `data/swift/fakesv/fakesv_train.jsonl`
+- `data/swift/fakesv/fakesv_val.jsonl`
+- `data/swift/fakesv/fakesv_test.jsonl`
+
+### Train
+
+```bash
+swift sft configs/swift/fakesv.yaml
+```
+
+### Infer
+
+```bash
+ADAPTER_PATH=$(python scripts/resolve_swift_adapter.py \
+  --output-dir /data2/573ops_ser/projects/videommd/outputs/swift/fakesv/your_run)
+
+swift infer configs/swift/fakesv_infer.yaml \
+  --adapter "$ADAPTER_PATH" \
+  --result_path /data2/573ops_ser/projects/videommd/outputs/swift/fakesv/fakesv_test_predictions.jsonl
+```
+
+### Evaluate
+
+```bash
+python scripts/evaluate_swift_predictions.py \
+  --dataset-jsonl data/swift/fakesv/fakesv_test.jsonl \
+  --prediction-jsonl /data2/573ops_ser/projects/videommd/outputs/swift/fakesv/fakesv_test_predictions.jsonl
+```
+
+Save metrics to file:
+
+```bash
+python scripts/evaluate_swift_predictions.py \
+  --dataset-jsonl data/swift/fakesv/fakesv_test.jsonl \
+  --prediction-jsonl /data2/573ops_ser/projects/videommd/outputs/swift/fakesv/fakesv_test_predictions.jsonl \
+  --output-json /data2/573ops_ser/projects/videommd/outputs/swift/fakesv/fakesv_test_metrics.json
+```
 
 ## Notes
 
-- FakeTT Swift export currently targets the ExMRD temporal split.
-- Metrics in the native path are `acc`, `macro_f1`, `macro_precision`, and `macro_recall`.
-- Install Swift support with `pip install -r requirements.txt`.
+- Training and inference both use native Swift commands.
+- Evaluation is intentionally separated from Swift and computed afterwards.
+- `--adapter` means the LoRA checkpoint directory, not the base model directory.
+- Do not use the old `mapmoe.json` device map in the current Swift workflow.

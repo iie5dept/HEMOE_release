@@ -1,0 +1,19 @@
+ENV:
+  CUDA_VISIBLE_DEVICES: "0,1,2,3,4,5,6,7"
+
+dataset: /data2/573ops_ser/projects/videommd/data/swift/fakett/fakett_test.jsonl
+system: |-
+  You are a multimodal fake-news detection assistant. Judge whether the short news video is real or fake according to the visual content and the provided textual context. Reply with exactly one word: real or fake.
+template: internvl2_5
+max_batch_size: 4
+torch_dtype: bfloat16
+infer_backend: transformers
+max_length: 8192
+attn_impl: flash_attn
+split_dataset_ratio: 1.0
+max_new_tokens: 1
+metric: acc
+data_seed: 2025
+seed: 2025
+temperature: 0
+result_path: /data2/573ops_ser/projects/videommd/outputs/swift/fakett/fakett_test_predictions.jsonl
