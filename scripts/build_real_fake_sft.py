@@ -92,7 +92,7 @@ def build_user_prompt(record: dict) -> str:
 
     event = str(record.get("event") or "").strip()
     if event:
-        parts.append(f"- news claim to verify: {event}")
+        parts.append(f"- news claim to verify: <claim>{event}</claim>")
 
     description = str(record.get("description") or "").strip()
     if description:

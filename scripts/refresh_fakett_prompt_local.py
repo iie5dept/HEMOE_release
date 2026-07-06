@@ -46,7 +46,7 @@ def build_prompt_from_text(text: str) -> str:
 
     claim = fields.get("news claim to verify", "")
     if claim:
-        parts.append(f"- news claim to verify: {claim}")
+        parts.append(f"- news claim to verify: <claim>{claim}</claim>")
 
     caption = fields.get("uploader caption", "")
     if caption:
