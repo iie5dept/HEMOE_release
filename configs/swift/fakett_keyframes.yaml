@@ -1,10 +1,18 @@
 ENV:
   CUDA_VISIBLE_DEVICES: "0,1,2,3,4,5,6,7"
   NPROC_PER_NODE: "8"
+  input_size: "448"
+  max_num: "1"
+  video_max_num: "1"
+  video_segments: "8"
+  INPUT_SIZE: "448"
+  MAX_NUM: "1"
+  VIDEO_MAX_NUM: "1"
+  VIDEO_SEGMENTS: "8"
 
 model: /data2/573ops_ser/models/InternVL-8B
-dataset: /data2/573ops_ser/projects/videommd/data/swift/fakett/fakett_train.jsonl
-val_dataset: /data2/573ops_ser/projects/videommd/data/swift/fakett/fakett_val.jsonl
+dataset: /data2/573ops_ser/projects/videommd/data/swift_keyframes/fakett/fakett_train.jsonl
+val_dataset: /data2/573ops_ser/projects/videommd/data/swift_keyframes/fakett/fakett_val.jsonl
 acc_strategy: seq
 system: |-
   You are a multimodal assistant for short-video news veracity detection.
@@ -30,7 +38,7 @@ save_steps: 1
 save_total_limit: 5
 logging_steps: 10
 max_length: 8192
-output_dir: /data2/573ops_ser/projects/videommd/outputs/swift/fakett
+output_dir: /data2/573ops_ser/projects/videommd/outputs/swift/fakett_keyframes
 warmup_ratio: 0.1
 data_seed: 2025
 seed: 2025

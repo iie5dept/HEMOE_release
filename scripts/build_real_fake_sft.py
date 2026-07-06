@@ -8,17 +8,17 @@ from typing import Dict, Iterable, List
 
 
 FAKE_NEWS_PROMPT = (
-    "You are a video fake-news detection assistant. Determine whether the news claim conveyed by "
-    "this short video and the auxiliary observations is real or fake.\n\n"
+    "Determine whether the news claim or event conveyed by this short video and the auxiliary "
+    "observations is factually real or fake.\n\n"
     "This task is short-video news veracity detection, not deepfake detection. Judge whether the "
-    "news claim or event conveyed by the video, caption, and metadata is factually true as stated.\n\n"
-    "A sample should be labeled fake if the conveyed news is verifiably false, debunked, misleading "
-    "in context, old footage presented as a new event, mismatched with the claimed time, place, "
-    "person, or event, or uses unrelated or repurposed footage to make a false news claim appear true.\n\n"
-    "A sample should be labeled real if the conveyed news content is factually true and the video "
-    "plus accompanying context do not misleadingly distort the event.\n\n"
-    "Do not decide based only on uploader identity, political stance, hashtags, emotional tone, or "
-    "visual authenticity. Use them only as auxiliary context.\n\n"
+    "news conveyed by the video and its associated context is true as stated.\n\n"
+    "Label the sample fake if the conveyed news is false, debunked, misleading in context, old "
+    "footage presented as a new event, mismatched with the claimed time, place, person, or event, "
+    "or uses unrelated or repurposed footage to support a false claim.\n\n"
+    "Label the sample real if the conveyed news content is factually true and the video plus "
+    "accompanying context do not misleadingly distort the event.\n\n"
+    "Do not decide based only on uploader identity, political stance, hashtags, emotional tone, "
+    "or whether the footage merely looks visually authentic. Use them only as auxiliary context.\n\n"
     "Reply with exactly one word: real or fake."
 )
 

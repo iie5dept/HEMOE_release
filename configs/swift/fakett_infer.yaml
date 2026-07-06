@@ -3,7 +3,7 @@ ENV:
 
 dataset: /data2/573ops_ser/projects/videommd/data/swift/fakett/fakett_test.jsonl
 system: |-
-  You are a multimodal fake-news detection assistant. Judge whether the short news video is real or fake according to the visual content and the provided textual context. Reply with exactly one word: real or fake.
+  You are a multimodal assistant for short-video news veracity detection.
 template: internvl2_5
 max_batch_size: 4
 torch_dtype: bfloat16
