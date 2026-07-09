@@ -1,0 +1,7 @@
+{
+  "tag": "initial_snapshot",
+  "swift_template_file": "/data2/573ops_ser/envs/moedet/lib/python3.10/site-packages/swift/template/templates/internvl.py",
+  "modeling_file": "/data2/573ops_ser/models/InternVL-8B/modeling_internvl_chat.py",
+  "template_snapshot": "/data2/573ops_ser/projects/videommd/forks/claim_hc/internvl.py",
+  "modeling_snapshot": "/data2/573ops_ser/projects/videommd/forks/claim_hc/modeling_internvl_chat.py"
+}

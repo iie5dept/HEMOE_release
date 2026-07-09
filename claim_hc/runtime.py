@@ -50,6 +50,7 @@ def build_claim_text_mask(input_ids: Tensor, selected: Tensor, processor: Any) -
     if not open_ids or not close_ids:
         return None
 
+    selected = selected.to(device=input_ids.device, dtype=torch.bool)
     batch_size, seq_len = input_ids.shape
     full_mask = torch.zeros((batch_size, seq_len), dtype=torch.bool, device=input_ids.device)
     for batch_idx in range(batch_size):
@@ -63,7 +64,7 @@ def build_claim_text_mask(input_ids: Tensor, selected: Tensor, processor: Any) -
             continue
         full_mask[batch_idx, content_start:end] = True
 
-    text_only_mask = full_mask[~selected].reshape(batch_size, -1)
+    text_only_mask = full_mask.masked_select(~selected).reshape(batch_size, -1)
     if text_only_mask.sum() == 0:
         return None
     return text_only_mask
