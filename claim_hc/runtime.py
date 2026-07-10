@@ -9,11 +9,34 @@ from .modules import ClaimConditionedHybridCompressor
 
 
 def get_base_model(model: Any) -> Any:
-    base_model = getattr(model, "base_model", None)
-    if base_model is not None and hasattr(base_model, "model"):
-        return base_model.model
-    if hasattr(model, "model"):
-        return model.model
+    def is_internvl_chat_like(candidate: Any) -> bool:
+        return (
+            candidate is not None
+            and hasattr(candidate, "language_model")
+            and hasattr(candidate, "extract_feature")
+            and hasattr(candidate, "get_input_embeddings")
+        )
+
+    if is_internvl_chat_like(model):
+        return model
+
+    queue = [model]
+    seen = set()
+    while queue:
+        candidate = queue.pop(0)
+        candidate_id = id(candidate)
+        if candidate_id in seen:
+            continue
+        seen.add(candidate_id)
+
+        if is_internvl_chat_like(candidate):
+            return candidate
+
+        for attr_name in ("module", "base_model", "model"):
+            child = getattr(candidate, attr_name, None)
+            if child is not None:
+                queue.append(child)
+
     return model
 
 

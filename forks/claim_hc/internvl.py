@@ -10,11 +10,12 @@ from swift.template.constant import MLLMTemplateType
 from swift.template.register import register_template
 from swift.template.template_inputs import StdTemplateInputs
 from swift.template.utils import Context, findall
-from swift.template.vision_utils import load_video_internvl, transform_image
+from swift.template.vision_utils import transform_image
 from swift.template.templates.llm import GptOssTemplateMeta, GptTemplate
 from swift.template.templates.microsoft import Phi3TemplateMeta
 from swift.template.templates.utils import ChatmlTemplateMeta
 from claim_hc.runtime import apply_claim_hc, build_claim_text_mask, extract_veracity_label
+from claim_hc.video_fallback import safe_load_video_internvl
 
 
 class InternvlTemplate(Template):
@@ -178,7 +179,7 @@ class Internvl2Template(InternvlTemplate):
         if media_type == 'image':
             return image_context
         elif media_type == 'video':
-            load_video = partial(load_video_internvl, num_segments=self.video_segments)
+            load_video = partial(safe_load_video_internvl, num_segments=self.video_segments)
             return self.replace_video2image(load_video, inputs, lambda i: [f'Frame{i + 1}: '] + image_context)
 
     def replace_ref(self, ref: str, index: int, inputs: StdTemplateInputs) -> List[Context]:

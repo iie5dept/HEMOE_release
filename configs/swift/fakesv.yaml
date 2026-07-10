@@ -7,7 +7,7 @@ dataset: /data2/573ops_ser/projects/videommd/data/swift/fakesv/fakesv_train.json
 val_dataset: /data2/573ops_ser/projects/videommd/data/swift/fakesv/fakesv_val.jsonl
 acc_strategy: seq
 system: |-
-  You are a multimodal fake-news detection assistant. Judge whether the short news video is real or fake according to the visual content and the provided textual context. Reply with exactly one word: real or fake.
+  你是一个短视频虚假新闻检测助手。请根据视频内容和给定的文本上下文，判断该短视频所表达的新闻事件或主张是真实还是虚假。只回答一个词：real 或 fake。
 template: internvl2_5
 torch_dtype: bfloat16
 attn_impl: flash_attn
