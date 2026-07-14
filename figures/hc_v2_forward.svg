@@ -1,0 +1,213 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1040" viewBox="0 0 1800 1040">
+  <defs>
+    <style>
+      .bg { fill: #f7f8fa; }
+      .panel { fill: #ffffff; stroke: #d5dce5; stroke-width: 1.4; }
+      .panel-soft { fill: #fbfcfe; stroke: #d9e0ea; stroke-width: 1.2; }
+      .input { fill: #eef6f4; stroke: #7daea3; stroke-width: 1.5; }
+      .encode { fill: #eef3fb; stroke: #7d97bd; stroke-width: 1.5; }
+      .claim { fill: #fff6e7; stroke: #d4a456; stroke-width: 1.5; }
+      .expert-a { fill: #edf7ef; stroke: #78a985; stroke-width: 1.5; }
+      .expert-b { fill: #fff0ec; stroke: #c98d7c; stroke-width: 1.5; }
+      .gate { fill: #f2f0fb; stroke: #928ac5; stroke-width: 1.5; }
+      .fusion { fill: #eef7fb; stroke: #76a5bd; stroke-width: 1.5; }
+      .loss { fill: #fbf1f4; stroke: #c58498; stroke-width: 1.5; }
+      .text { font-family: Helvetica, Arial, sans-serif; fill: #17202a; font-size: 19px; }
+      .title { font-family: Helvetica, Arial, sans-serif; fill: #111827; font-weight: 700; font-size: 25px; }
+      .small { font-family: Helvetica, Arial, sans-serif; fill: #4b5563; font-size: 15px; }
+      .tiny { font-family: Helvetica, Arial, sans-serif; fill: #606a78; font-size: 13px; }
+      .var { font-family: Helvetica, Arial, sans-serif; fill: #111827; font-weight: 700; font-size: 18px; }
+      .arrow { fill: none; stroke: #415066; stroke-width: 2.1; marker-end: url(#arrow); }
+      .arrow-soft { fill: none; stroke: #6b7587; stroke-width: 1.7; marker-end: url(#arrowSoft); }
+      .arrow-loss { fill: none; stroke: #a05e75; stroke-width: 1.8; marker-end: url(#arrowLoss); stroke-dasharray: 6 5; }
+      .section-label { font-family: Helvetica, Arial, sans-serif; font-size: 14px; fill: #6b7280; font-weight: 700; letter-spacing: 0.5px; }
+    </style>
+    <marker id="arrow" markerWidth="11" markerHeight="11" refX="9" refY="5.5" orient="auto">
+      <path d="M0,0 L10,5.5 L0,11 Z" fill="#415066"/>
+    </marker>
+    <marker id="arrowSoft" markerWidth="10" markerHeight="10" refX="8.5" refY="5" orient="auto">
+      <path d="M0,0 L9,5 L0,10 Z" fill="#6b7587"/>
+    </marker>
+    <marker id="arrowLoss" markerWidth="10" markerHeight="10" refX="8.5" refY="5" orient="auto">
+      <path d="M0,0 L9,5 L0,10 Z" fill="#a05e75"/>
+    </marker>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="125%">
+      <feDropShadow dx="0" dy="5" stdDeviation="5" flood-color="#111827" flood-opacity="0.09"/>
+    </filter>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1800" height="1040"/>
+
+  <text class="title" x="58" y="58">Claim-Conditioned Hybrid Compressor for Short-Video News Veracity Detection</text>
+  <text class="small" x="58" y="86">Forward process: explicit claim span extraction, support/conflict evidence routing, fused visual tokens, and real/fake generation.</text>
+
+  <!-- Stage labels -->
+  <text class="section-label" x="64" y="134">INPUT</text>
+  <text class="section-label" x="332" y="134">ENCODING</text>
+  <text class="section-label" x="565" y="134">CLAIM EXTRACTION</text>
+  <text class="section-label" x="812" y="134">HC v2 EVIDENCE ROUTING</text>
+  <text class="section-label" x="1450" y="134">DECODING</text>
+
+  <!-- Inputs -->
+  <g filter="url(#shadow)">
+    <rect class="input" x="54" y="160" width="220" height="170" rx="10"/>
+    <text class="text" x="76" y="193" font-weight="700">Short News Video</text>
+    <rect x="78" y="218" width="36" height="54" rx="3" fill="#d7ebe6" stroke="#7daea3"/>
+    <rect x="120" y="218" width="36" height="54" rx="3" fill="#d7ebe6" stroke="#7daea3"/>
+    <rect x="162" y="218" width="36" height="54" rx="3" fill="#d7ebe6" stroke="#7daea3"/>
+    <rect x="204" y="218" width="36" height="54" rx="3" fill="#d7ebe6" stroke="#7daea3"/>
+    <text class="tiny" x="80" y="300">sampled frames</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect class="input" x="54" y="375" width="220" height="230" rx="10"/>
+    <text class="text" x="76" y="408" font-weight="700">Textual Context</text>
+    <text class="small" x="76" y="440">title / caption</text>
+    <text class="small" x="76" y="466">profile / time</text>
+    <text class="small" x="76" y="492">comments</text>
+    <rect x="75" y="518" width="176" height="50" rx="6" fill="#fffaf0" stroke="#d4a456"/>
+    <text class="small" x="92" y="548">&lt;claim&gt; ... &lt;/claim&gt;</text>
+  </g>
+
+  <!-- Encoding -->
+  <g filter="url(#shadow)">
+    <rect class="encode" x="330" y="182" width="205" height="126" rx="10"/>
+    <text class="text" x="353" y="216" font-weight="700">Vision Encoder</text>
+    <text class="small" x="353" y="247">InternVL visual tower</text>
+    <text class="var" x="353" y="279">Visual tokens V</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect class="encode" x="330" y="410" width="205" height="126" rx="10"/>
+    <text class="text" x="353" y="444" font-weight="700">Text Embedding</text>
+    <text class="small" x="353" y="475">tokenizer + embedding</text>
+    <text class="var" x="353" y="507">Text tokens H_text</text>
+  </g>
+
+  <!-- Claim extraction -->
+  <g filter="url(#shadow)">
+    <rect class="claim" x="590" y="376" width="220" height="172" rx="10"/>
+    <text class="text" x="615" y="410" font-weight="700">Claim Span</text>
+    <text class="small" x="615" y="441">locate &lt;claim&gt; span</text>
+    <text class="small" x="615" y="468">build mask M_claim</text>
+    <line x1="615" y1="490" x2="785" y2="490" stroke="#d4a456" stroke-width="1.2"/>
+    <text class="var" x="615" y="522">z_c = MeanPool(H_text)</text>
+  </g>
+
+  <!-- HC v2 outer panel -->
+  <g filter="url(#shadow)">
+    <rect class="panel" x="850" y="152" width="525" height="575" rx="14"/>
+    <text class="title" x="878" y="190">HC v2: Claim-Conditioned Hybrid Compressor</text>
+    <text class="small" x="878" y="218">Route visual evidence into scene prior, support evidence, and conflict evidence.</text>
+  </g>
+
+  <!-- Scene prior expert -->
+  <g filter="url(#shadow)">
+    <rect class="expert-a" x="880" y="252" width="210" height="170" rx="10"/>
+    <text class="text" x="902" y="286" font-weight="700">Scene Prior Expert</text>
+    <text class="small" x="902" y="317">local FFN</text>
+    <text class="small" x="902" y="343">global scene summary</text>
+    <text class="small" x="902" y="369">token refinement</text>
+    <line x1="902" y1="389" x2="1068" y2="389" stroke="#78a985" stroke-width="1.2"/>
+    <text class="var" x="902" y="413">G, g</text>
+  </g>
+
+  <!-- Claim verifier expert -->
+  <g filter="url(#shadow)">
+    <rect class="expert-b" x="880" y="458" width="465" height="236" rx="10"/>
+    <text class="text" x="902" y="492" font-weight="700">Claim Verifier Expert</text>
+    <rect x="902" y="515" width="178" height="55" rx="8" fill="#fff9f6" stroke="#c98d7c"/>
+    <text class="small" x="920" y="548">Cross-Attn: z_c to V</text>
+    <text class="var" x="1098" y="548">C</text>
+
+    <rect x="902" y="600" width="190" height="64" rx="8" fill="#fff9f6" stroke="#c98d7c"/>
+    <text class="small" x="921" y="626">Support Branch</text>
+    <text class="tiny" x="921" y="649">[V ; C] -&gt; S, s</text>
+
+    <rect x="1122" y="600" width="198" height="64" rx="8" fill="#fff9f6" stroke="#c98d7c"/>
+    <text class="small" x="1142" y="626">Conflict Branch</text>
+    <text class="tiny" x="1142" y="649">[V ; C ; V-C] -&gt; K, k</text>
+  </g>
+
+  <!-- Hierarchical gate -->
+  <g filter="url(#shadow)">
+    <rect class="gate" x="1128" y="252" width="217" height="170" rx="10"/>
+    <text class="text" x="1150" y="286" font-weight="700">Hierarchical Gate</text>
+    <text class="small" x="1150" y="317">coarse: scene vs verifier</text>
+    <text class="small" x="1150" y="343">fine: support vs conflict</text>
+    <line x1="1150" y1="365" x2="1322" y2="365" stroke="#928ac5" stroke-width="1.2"/>
+    <text class="var" x="1150" y="393">w_g, w_s, w_k</text>
+  </g>
+
+  <!-- Fusion -->
+  <g filter="url(#shadow)">
+    <rect class="fusion" x="1030" y="735" width="315" height="104" rx="10"/>
+    <text class="text" x="1054" y="770" font-weight="700">Weighted Visual Token Fusion</text>
+    <text class="small" x="1054" y="800">V_fused = w_g G + w_s S + w_k K</text>
+    <text class="var" x="1054" y="828">Fused visual tokens V_fused</text>
+  </g>
+
+  <!-- LLM and output -->
+  <g filter="url(#shadow)">
+    <rect class="panel-soft" x="1440" y="285" width="250" height="165" rx="10"/>
+    <text class="text" x="1465" y="320" font-weight="700">Token Replacement</text>
+    <text class="small" x="1465" y="352">replace visual positions</text>
+    <text class="small" x="1465" y="378">with V_fused</text>
+    <text class="var" x="1465" y="417">inputs_embeds</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect class="panel-soft" x="1440" y="505" width="250" height="135" rx="10"/>
+    <text class="text" x="1465" y="540" font-weight="700">InternVL LLM</text>
+    <text class="small" x="1465" y="572">language model decoder</text>
+    <text class="var" x="1465" y="612">generate: real / fake</text>
+  </g>
+
+  <!-- Loss branch -->
+  <g filter="url(#shadow)">
+    <rect class="loss" x="570" y="870" width="710" height="112" rx="12"/>
+    <text class="text" x="596" y="906" font-weight="700">Auxiliary Veracity Supervision</text>
+    <text class="small" x="596" y="936">L_cls from [z_c, v, s-k, z_c x v, |z_c-v|, s x k, |s-k|]</text>
+    <text class="small" x="596" y="964">L_decorr = mean(|cos(g,s)|, |cos(g,k)|, |cos(s,k)|)</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect class="loss" x="1350" y="858" width="340" height="138" rx="12"/>
+    <text class="text" x="1376" y="894" font-weight="700">Training Objective</text>
+    <text class="small" x="1376" y="926">L_hc = L_cls + lambda_decorr L_decorr</text>
+    <text class="small" x="1376" y="956">L = L_gen + lambda_hc L_hc</text>
+    <text class="tiny" x="1376" y="981">lambda_hc = 0.2, lambda_decorr = 0.05</text>
+  </g>
+
+  <!-- Main arrows -->
+  <path class="arrow" d="M274 245 C295 245, 307 245, 330 245"/>
+  <path class="arrow" d="M274 475 C295 475, 307 475, 330 475"/>
+  <path class="arrow" d="M535 475 C556 475, 568 475, 590 475"/>
+  <path class="arrow" d="M535 245 C655 245, 732 294, 850 315"/>
+  <path class="arrow-soft" d="M810 462 C838 462, 850 462, 880 520"/>
+  <path class="arrow-soft" d="M810 462 C848 420, 850 360, 880 337"/>
+  <path class="arrow-soft" d="M1090 337 C1110 337, 1115 337, 1128 337"/>
+  <path class="arrow-soft" d="M1112 632 C1130 572, 1160 475, 1210 422"/>
+  <path class="arrow-soft" d="M1218 600 C1225 540, 1230 475, 1235 422"/>
+  <path class="arrow" d="M1238 422 C1245 512, 1243 630, 1212 735"/>
+  <path class="arrow" d="M1090 422 C1092 535, 1110 655, 1140 735"/>
+  <path class="arrow" d="M1222 664 C1225 690, 1225 712, 1225 735"/>
+  <path class="arrow" d="M1345 787 C1390 787, 1408 390, 1440 390"/>
+  <path class="arrow" d="M1565 450 C1565 470, 1565 485, 1565 505"/>
+
+  <!-- Loss arrows -->
+  <path class="arrow-loss" d="M1188 839 C1188 855, 1188 862, 1188 870"/>
+  <path class="arrow-loss" d="M700 548 C675 690, 650 800, 650 870"/>
+  <path class="arrow-loss" d="M985 422 C940 575, 890 735, 850 870"/>
+  <path class="arrow-loss" d="M997 664 C950 735, 925 810, 925 870"/>
+  <path class="arrow-loss" d="M1221 664 C1195 735, 1165 810, 1130 870"/>
+  <path class="arrow-loss" d="M1565 640 C1570 730, 1570 800, 1570 858"/>
+  <path class="arrow-loss" d="M1280 930 C1305 930, 1328 930, 1350 930"/>
+
+  <!-- Equation labels near arrows -->
+  <text class="tiny" x="662" y="236">V</text>
+  <text class="tiny" x="550" y="460">H_text</text>
+  <text class="tiny" x="823" y="443">z_c</text>
+  <text class="tiny" x="1378" y="777">V_fused</text>
+  <text class="tiny" x="1582" y="474">updated embeddings</text>
+</svg>

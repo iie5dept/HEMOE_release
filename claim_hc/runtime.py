@@ -1,11 +1,19 @@
 from __future__ import annotations
 
+import os
 from typing import Any
 
 import torch
 from torch import Tensor
 
 from .modules import ClaimConditionedHybridCompressor
+
+
+def _env_float(name: str, default: float) -> float:
+    value = os.environ.get(name)
+    if value is None or value == "":
+        return default
+    return float(value)
 
 
 def get_base_model(model: Any) -> Any:
@@ -46,7 +54,7 @@ def ensure_claim_hc(model: Any, hidden_size: int, dtype: torch.dtype, device: to
     if claim_hc is None:
         claim_hc = ClaimConditionedHybridCompressor(hidden_size=hidden_size)
         target_model.claim_hc = claim_hc.to(device=device, dtype=dtype)
-        target_model.claim_hc_lambda = 0.2
+        target_model.claim_hc_lambda = _env_float("CLAIM_HC_LAMBDA", 0.2)
     return target_model
 
 

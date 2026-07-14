@@ -1,6 +1,13 @@
 ENV:
   CUDA_VISIBLE_DEVICES: "0,1,2,3,4,5,6,7"
   NPROC_PER_NODE: "8"
+  CLAIM_HC_USE_GENERAL_EXPERT: "true"
+  CLAIM_HC_USE_CLAIM_VERIFIER_EXPERT: "true"
+  CLAIM_HC_GATE_TYPE: "hierarchical"
+  CLAIM_HC_USE_AUX_CLS_LOSS: "true"
+  CLAIM_HC_USE_DECORRELATION_LOSS: "true"
+  CLAIM_HC_LAMBDA: "0.2"
+  CLAIM_HC_DECORRELATION_WEIGHT: "0.05"
 
 model: /data2/573ops_ser/models/InternVL-8B
 dataset: /data2/573ops_ser/projects/videommd/data/swift/fakett/fakett_train.jsonl
@@ -30,7 +37,7 @@ save_steps: 1
 save_total_limit: 5
 logging_steps: 10
 max_length: 8192
-output_dir: /data2/573ops_ser/projects/videommd/outputs/swift/fakett
+output_dir: /data2/573ops_ser/projects/videommd/outputs/swift/fakett_hc_full
 warmup_ratio: 0.1
 data_seed: 42
 seed: 42

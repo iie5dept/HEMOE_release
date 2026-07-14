@@ -1,13 +1,20 @@
 ENV:
   CUDA_VISIBLE_DEVICES: "0,1,2,3,4,5,6,7"
   NPROC_PER_NODE: "8"
+  CLAIM_HC_USE_GENERAL_EXPERT: "true"
+  CLAIM_HC_USE_CLAIM_VERIFIER_EXPERT: "false"
+  CLAIM_HC_GATE_TYPE: "uniform"
+  CLAIM_HC_USE_AUX_CLS_LOSS: "true"
+  CLAIM_HC_USE_DECORRELATION_LOSS: "false"
+  CLAIM_HC_LAMBDA: "0.2"
+  CLAIM_HC_DECORRELATION_WEIGHT: "0.0"
 
 model: /data2/573ops_ser/models/InternVL-8B
 dataset: /data2/573ops_ser/projects/videommd/data/swift/fakesv/fakesv_train.jsonl
 val_dataset: /data2/573ops_ser/projects/videommd/data/swift/fakesv/fakesv_val.jsonl
 acc_strategy: seq
 system: |-
-  你是一个短视频虚假新闻检测助手。请根据视频内容和给定的文本上下文，判断该短视频所表达的新闻事件或主张是真实还是虚假。只回答一个词：real 或 fake。
+  你是一个短视频虚假新闻检测助手。请根据视频内容和给定文本上下文，判断该短视频所表达的新闻事件或主张是真实还是虚假。只回答一个词：real 或 fake。
 template: internvl2_5
 torch_dtype: bfloat16
 attn_impl: flash_attn
@@ -30,7 +37,7 @@ save_steps: 1
 save_total_limit: 5
 logging_steps: 10
 max_length: 8192
-output_dir: /data2/573ops_ser/projects/videommd/outputs/swift/fakesv
+output_dir: /data2/573ops_ser/projects/videommd/outputs/swift/fakesv_hc_no_hier_gate_no_claim_verifier
 warmup_ratio: 0.1
 data_seed: 42
 seed: 42
