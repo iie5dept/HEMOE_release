@@ -136,7 +136,11 @@ def apply_claim_hc(
     if vit_embeds is None or text_features is None:
         return inputs_embeds, None
     if claim_text_mask is None or claim_text_mask.sum() == 0:
-        return inputs_embeds, None
+        claim_text_mask = torch.ones(
+            text_features.shape[:2],
+            dtype=torch.bool,
+            device=text_features.device,
+        )
 
     target_model = ensure_claim_hc(
         model=model,
@@ -144,12 +148,17 @@ def apply_claim_hc(
         dtype=vit_embeds.dtype,
         device=vit_embeds.device,
     )
+    claim_text_mask = claim_text_mask.to(device=vit_embeds.device, dtype=torch.bool)
+    text_features = text_features.to(device=vit_embeds.device, dtype=vit_embeds.dtype)
     hc_output = target_model.claim_hc(visual_tokens=vit_embeds, claim_tokens=text_features, claim_mask=claim_text_mask)
 
     batch_size, seq_len, hidden_size = inputs_embeds.shape
     flat_inputs = inputs_embeds.reshape(batch_size * seq_len, hidden_size)
     fused_visual = hc_output.fused_visual_tokens.reshape(-1, hidden_size).to(flat_inputs.dtype)
-    flat_inputs[selected.reshape(-1)] = fused_visual
+    selected_flat = selected.reshape(-1)
+    original_visual = flat_inputs[selected_flat]
+    fused_visual = original_visual + fused_visual
+    flat_inputs[selected_flat] = fused_visual
     updated_inputs = flat_inputs.reshape(batch_size, seq_len, hidden_size)
 
     aux_loss = None

@@ -4,14 +4,13 @@ ENV:
   CLAIM_HC_USE_GENERAL_EXPERT: "true"
   CLAIM_HC_USE_CLAIM_VERIFIER_EXPERT: "true"
   CLAIM_HC_GATE_TYPE: "hierarchical"
-  CLAIM_HC_USE_AUX_CLS_LOSS: "true"
+  CLAIM_HC_USE_AUX_CLS_LOSS: "false"
   CLAIM_HC_USE_DECORRELATION_LOSS: "true"
   CLAIM_HC_LAMBDA: "0.2"
   CLAIM_HC_DECORRELATION_WEIGHT: "0.05"
 
 model: /data2/573ops_ser/models/InternVL-8B
 dataset: /data2/573ops_ser/projects/videommd/data/swift/fakett/fakett_train.jsonl
-val_dataset: /data2/573ops_ser/projects/videommd/data/swift/fakett/fakett_val.jsonl
 acc_strategy: seq
 system: |-
   You are a multimodal assistant for short-video news veracity detection.
@@ -31,8 +30,7 @@ freeze_vit: true
 freeze_aligner: true
 ddp_find_unused_parameters: false
 save_strategy: epoch
-eval_strategy: epoch
-eval_steps: 1
+eval_strategy: "no"
 save_steps: 1
 save_total_limit: 5
 logging_steps: 10
