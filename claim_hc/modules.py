@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import os
+from typing import Any
 
 import torch
 import torch.nn.functional as F
@@ -445,3 +446,109 @@ class ClaimConditionedHybridCompressor(nn.Module):
 GeneralSceneExpert = ScenePriorExpert
 ClaimEvidenceExpert = ClaimVerifierExpert
 ClaimAwareGate = HierarchicalClaimGate
+
+
+@dataclass
+class EvidenceBridgeOutput:
+    fused_visual_tokens: Tensor
+    gate_weights: Tensor
+    coarse_gate_weights: Tensor
+    fine_gate_weights: Tensor
+    general_tokens: Tensor
+    support_tokens: Tensor
+    conflict_tokens: Tensor
+    claim_summary: Tensor
+    general_summary: Tensor
+    support_summary: Tensor
+    conflict_summary: Tensor
+    visual_summary: Tensor
+
+
+class TextConditionedEvidenceBridge(nn.Module):
+    """Text-guided evidence transformer block for visual tokens.
+
+    The module consumes all text tokens, not only the explicit claim span. It
+    returns a residual visual delta; the runtime adds this delta to the
+    original InternVL visual tokens.
+    """
+
+    def __init__(
+        self,
+        hidden_size: int,
+        num_heads: int = 8,
+        intermediate_size: int | None = None,
+        dropout: float = 0.1,
+        **_: Any,
+    ) -> None:
+        super().__init__()
+        intermediate_size = intermediate_size or hidden_size
+        self.visual_norm = nn.LayerNorm(hidden_size)
+        self.text_norm = nn.LayerNorm(hidden_size)
+        self.cross_attn = nn.MultiheadAttention(
+            embed_dim=hidden_size,
+            num_heads=num_heads,
+            dropout=dropout,
+            batch_first=True,
+        )
+        self.ffn = nn.Sequential(
+            nn.LayerNorm(hidden_size),
+            nn.Linear(hidden_size, intermediate_size),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(intermediate_size, hidden_size),
+            nn.Dropout(dropout),
+        )
+        self.attn_scale = nn.Parameter(torch.zeros(()))
+        self.ffn_scale = nn.Parameter(torch.zeros(()))
+
+    def forward(self, visual_tokens: Tensor, claim_tokens: Tensor, claim_mask: Tensor | None = None) -> EvidenceBridgeOutput:
+        text_tokens = self.text_norm(claim_tokens)
+        key_padding_mask = None
+        if claim_mask is not None:
+            key_padding_mask = ~claim_mask.to(device=claim_tokens.device, dtype=torch.bool)
+            if not (~key_padding_mask).any(dim=1).all().item():
+                key_padding_mask = None
+
+        attn_delta, _ = self.cross_attn(
+            query=self.visual_norm(visual_tokens),
+            key=text_tokens,
+            value=text_tokens,
+            key_padding_mask=key_padding_mask,
+            need_weights=False,
+        )
+        attn_delta = torch.tanh(self.attn_scale) * attn_delta
+        visual_after_attn = visual_tokens + attn_delta
+        ffn_delta = torch.tanh(self.ffn_scale) * self.ffn(visual_after_attn)
+        residual_delta = attn_delta + ffn_delta
+
+        text_summary = masked_mean_pool(claim_tokens, claim_mask)
+        visual_summary = residual_delta.mean(dim=1)
+        bridge_strength = torch.tanh(self.attn_scale).abs() + torch.tanh(self.ffn_scale).abs()
+        bridge_strength = bridge_strength.expand(visual_tokens.shape[0], 1).to(dtype=visual_tokens.dtype)
+        gate_weights = torch.cat(
+            [
+                1.0 - bridge_strength.clamp(max=1.0),
+                bridge_strength.clamp(max=1.0),
+                torch.zeros_like(bridge_strength),
+            ],
+            dim=-1,
+        )
+        return EvidenceBridgeOutput(
+            fused_visual_tokens=residual_delta,
+            gate_weights=gate_weights,
+            coarse_gate_weights=gate_weights[:, :2],
+            fine_gate_weights=gate_weights[:, 1:],
+            general_tokens=visual_tokens,
+            support_tokens=visual_after_attn,
+            conflict_tokens=residual_delta,
+            claim_summary=text_summary,
+            general_summary=visual_tokens.mean(dim=1),
+            support_summary=visual_after_attn.mean(dim=1),
+            conflict_summary=visual_summary,
+            visual_summary=visual_summary,
+        )
+
+
+# Keep the old public name so existing runtime, PEFT modules_to_save, and
+# checkpoints continue to use the same attribute name: `claim_hc`.
+ClaimConditionedHybridCompressor = TextConditionedEvidenceBridge

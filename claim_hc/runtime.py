@@ -135,12 +135,11 @@ def apply_claim_hc(
 ) -> tuple[Tensor, Tensor | None]:
     if vit_embeds is None or text_features is None:
         return inputs_embeds, None
-    if claim_text_mask is None or claim_text_mask.sum() == 0:
-        claim_text_mask = torch.ones(
-            text_features.shape[:2],
-            dtype=torch.bool,
-            device=text_features.device,
-        )
+    claim_text_mask = torch.ones(
+        text_features.shape[:2],
+        dtype=torch.bool,
+        device=text_features.device,
+    )
 
     target_model = ensure_claim_hc(
         model=model,
@@ -150,7 +149,7 @@ def apply_claim_hc(
     )
     claim_text_mask = claim_text_mask.to(device=vit_embeds.device, dtype=torch.bool)
     text_features = text_features.to(device=vit_embeds.device, dtype=vit_embeds.dtype)
-    hc_output = target_model.claim_hc(visual_tokens=vit_embeds, claim_tokens=text_features, claim_mask=claim_text_mask)
+    hc_output = target_model.claim_hc(vit_embeds, claim_tokens=text_features, claim_mask=claim_text_mask)
 
     batch_size, seq_len, hidden_size = inputs_embeds.shape
     flat_inputs = inputs_embeds.reshape(batch_size * seq_len, hidden_size)
@@ -161,11 +160,4 @@ def apply_claim_hc(
     flat_inputs[selected_flat] = fused_visual
     updated_inputs = flat_inputs.reshape(batch_size, seq_len, hidden_size)
 
-    aux_loss = None
-    if veracity_label is not None:
-        labels = veracity_label.to(device=vit_embeds.device, dtype=torch.long)
-        if labels.ndim == 2 and labels.shape[-1] == 1:
-            labels = labels.squeeze(-1)
-        aux_loss, _ = target_model.claim_hc.compute_aux_loss(hc_output, labels)
-        aux_loss = aux_loss * float(getattr(target_model, "claim_hc_lambda", 0.2))
-    return updated_inputs, aux_loss
+    return updated_inputs, None
