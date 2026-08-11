@@ -86,22 +86,10 @@ class InternVLChatModel(PreTrainedModel):
         self.img_context_token_id = None
         self.conv_template = get_conv_template(self.template)
         self.system_message = self.conv_template.system_message
-        # videommd whisper audio init patch start
-        audio_hidden_size = int(os.environ.get('VIDEOMMD_AUDIO_HIDDEN_SIZE', '1280'))
-        self.whisper_audio_hidden_size = audio_hidden_size
-        self.whisper_audio_projector = nn.Sequential(
-            nn.LayerNorm(audio_hidden_size),
-            nn.Linear(audio_hidden_size, llm_hidden_size),
-            nn.GELU(),
-            nn.Linear(llm_hidden_size, llm_hidden_size)
-        )
-        self.whisper_audio_type_embedding = nn.Parameter(torch.zeros(1, 1, llm_hidden_size))
-        self.whisper_audio_norm = nn.LayerNorm(llm_hidden_size)
-        # videommd whisper audio init patch end
 
     def forward(
             self,
-pixel_values: torch.FloatTensor,
+            pixel_values: torch.FloatTensor,
             input_ids: torch.LongTensor = None,
             attention_mask: Optional[torch.Tensor] = None,
             position_ids: Optional[torch.LongTensor] = None,
@@ -111,8 +99,7 @@ pixel_values: torch.FloatTensor,
             use_cache: Optional[bool] = None,
             output_attentions: Optional[bool] = None,
             output_hidden_states: Optional[bool] = None,
-hc_aux_loss=None,
-        return_dict: Optional[bool] = None,
+            return_dict: Optional[bool] = None,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
@@ -171,10 +158,6 @@ hc_aux_loss=None,
             output = (logits,) + outputs[1:]
             return (loss,) + output if loss is not None else output
 
-        # videommd claim hc model patch start
-        if hc_aux_loss is not None and loss is not None:
-            loss = loss + hc_aux_loss
-        # videommd claim hc model patch end
         return CausalLMOutputWithPast(
             loss=loss,
             logits=logits,

@@ -1,21 +1,3 @@
-from .modules import (
-    ClaimAwareGate,
-    ClaimEvidenceExpert,
-    ClaimConditionedHybridCompressor,
-    FlatClaimGate,
-    GeneralSceneExpert,
-    HierarchicalClaimGate,
-    ScenePriorExpert,
-    VeracityClassifier,
-)
+"""Local helpers for the videommd Swift wrappers."""
 
-__all__ = [
-    "ClaimAwareGate",
-    "ClaimEvidenceExpert",
-    "ClaimConditionedHybridCompressor",
-    "FlatClaimGate",
-    "GeneralSceneExpert",
-    "HierarchicalClaimGate",
-    "ScenePriorExpert",
-    "VeracityClassifier",
-]
+__all__: list[str] = []

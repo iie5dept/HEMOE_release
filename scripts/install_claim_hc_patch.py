@@ -1,43 +1,17 @@
 from __future__ import annotations
 
-import argparse
-import re
-from pathlib import Path
+
+def main() -> None:
+    raise SystemExit(
+        "scripts/install_claim_hc_patch.py has been retired. "
+        "The project now uses the local fork at forks/claim_hc/internvl.py "
+        "through scripts/run_swift_sft_with_claim_hc.py and "
+        "scripts/run_swift_infer_with_claim_hc.py instead of patching site-packages."
+    )
 
 
-TEMPLATE_IMPORT_SENTINEL = "from .utils import ChatmlTemplateMeta"
-MODEL_FORWARD_SENTINEL = "def forward("
-MODEL_RETURN_SENTINEL = "return CausalLMOutputWithPast("
-
-
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Install claim-HC patches for Swift InternVL integration.")
-    parser.add_argument("--swift-template-file", type=Path, required=True)
-    parser.add_argument("--modeling-file", type=Path, required=True)
-    parser.add_argument("--extra-modeling-file", type=Path, action="append", default=[])
-    return parser.parse_args()
-
-
-def ensure_contains(text: str, needle: str, path: Path) -> None:
-    if needle not in text:
-        raise ValueError(f"Could not find sentinel in {path}: {needle}")
-
-
-def replace_once(text: str, old: str, new: str, path: Path) -> str:
-    if old not in text:
-        raise ValueError(f"Could not replace in {path}. Missing block:\n{old}")
-    return text.replace(old, new, 1)
-
-
-def patch_template_file(path: Path) -> None:
-    text = path.read_text(encoding="utf-8")
-    ensure_contains(text, TEMPLATE_IMPORT_SENTINEL, path)
-    ensure_contains(text, "class InternvlTemplate", path)
-    ensure_contains(text, "class Internvl2Template", path)
-
-    if "videommd claim hc template patch start" in text:
-        print(f"[skip] template already patched: {path}")
-        return
+if __name__ == "__main__":
+    main()
 
     import_block = (
         TEMPLATE_IMPORT_SENTINEL

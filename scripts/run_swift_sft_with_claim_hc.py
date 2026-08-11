@@ -16,10 +16,8 @@ def main() -> None:
 
     from swift.pipelines import sft_main
     from claim_hc.local_template import register_local_internvl_template
-    from claim_hc.runtime_patch import install_claim_hc_runtime_patch
 
     register_local_internvl_template(REPO_ROOT / "forks" / "claim_hc" / "internvl.py")
-    install_claim_hc_runtime_patch()
     sft_main()
 
 

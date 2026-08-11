@@ -14,7 +14,6 @@ from swift.template.vision_utils import transform_image
 from swift.template.templates.llm import GptOssTemplateMeta, GptTemplate
 from swift.template.templates.microsoft import Phi3TemplateMeta
 from swift.template.templates.utils import ChatmlTemplateMeta
-from claim_hc.runtime import apply_claim_hc, build_claim_text_mask, extract_veracity_label
 from claim_hc.video_fallback import safe_load_video_internvl
 
 
@@ -76,43 +75,21 @@ class InternvlTemplate(Template):
         device = embedding.weight.device
         input_ids = inputs['input_ids']
         inputs_embeds = embedding(input_ids).to(device=device)
-        text_features = inputs_embeds.clone().to(device=device)
-        vit_embeds = None
         selected = torch.zeros_like(input_ids, dtype=torch.bool)
-        mask = torch.ones_like(input_ids, dtype=torch.float)
 
         pixel_values = inputs.get('pixel_values')
         if pixel_values is not None:
             pixel_values = pixel_values.to(device=device)
             vit_embeds = model.extract_feature(pixel_values).to(device=device)
             selected = (input_ids == self.processor.encode('<IMG_CONTEXT>', add_special_tokens=False)[0]).to(device=device)
-            mask = torch.where(selected, torch.zeros_like(selected, dtype=torch.float),
-                               torch.ones_like(selected, dtype=torch.float))
-
-            text_features = text_features[~selected]
-            text_features = text_features.reshape(inputs_embeds.shape[0], -1, text_features.shape[-1])
             vit_embeds = vit_embeds.reshape(-1, vit_embeds.shape[-1])
             inputs_embeds[selected] = vit_embeds.to(dtype=inputs_embeds.dtype)
-            vit_embeds = vit_embeds.reshape(inputs_embeds.shape[0], -1, vit_embeds.shape[-1])
         elif is_deepspeed_enabled():
             dummy_pixel_values = torch.zeros((1, 3, 32, 32), device=device, dtype=inputs_embeds.dtype)
             vit_embeds = model.extract_feature(dummy_pixel_values).to(device=device)
             inputs_embeds += vit_embeds.mean() * 0.
 
-        claim_text_mask = build_claim_text_mask(input_ids, selected, self.processor)
-        inputs_embeds, hc_aux_loss = apply_claim_hc(
-            model=model,
-            inputs_embeds=inputs_embeds,
-            text_features=text_features,
-            vit_embeds=vit_embeds,
-            selected=selected,
-            claim_text_mask=claim_text_mask,
-            veracity_label=inputs.get('veracity_label'),
-        )
-        return {'inputs_embeds': inputs_embeds, 'text_features': text_features,
-                'vit_embeds': vit_embeds, 'mask': mask, 'selected': selected,
-                'claim_text_mask': claim_text_mask, 'hc_aux_loss': hc_aux_loss,
-                'veracity_label': inputs.get('veracity_label')}
+        return {'inputs_embeds': inputs_embeds}
 
 
 register_template(
@@ -128,42 +105,6 @@ register_template(
         template_cls=InternvlTemplate,
         auto_add_bos=True))
 
-
-
-
-
-
-
-# videommd claim hc generate patch start
-def _videommd_claim_hc_generate(self, model: nn.Module, *args, **kwargs):
-    model_kwargs = dict(kwargs)
-    helper_keys = {
-        'text_features', 'vit_embeds', 'mask', 'selected',
-        'claim_text_mask', 'hc_aux_loss', 'veracity_label', 'labels'
-    }
-    if 'inputs_embeds' in model_kwargs:
-        for key in list(helper_keys) + ['pixel_values']:
-            model_kwargs.pop(key, None)
-        return model.generate(*args, **model_kwargs)
-    if 'input_ids' in model_kwargs and ('pixel_values' in model_kwargs or 'veracity_label' in model_kwargs):
-        passthrough_kwargs = {
-            key: value for key, value in model_kwargs.items()
-            if key not in helper_keys and key != 'pixel_values'
-        }
-        post_encoded = self._post_encode(model, model_kwargs)
-        if isinstance(post_encoded, dict):
-            for key in list(helper_keys) + ['pixel_values']:
-                post_encoded.pop(key, None)
-            if 'inputs_embeds' in post_encoded:
-                passthrough_kwargs.pop('input_ids', None)
-            post_encoded.update({k: v for k, v in passthrough_kwargs.items() if k not in post_encoded})
-            return model.generate(*args, **post_encoded)
-    for key in helper_keys:
-        model_kwargs.pop(key, None)
-    return model.generate(*args, **model_kwargs)
-
-InternvlTemplate.generate = _videommd_claim_hc_generate
-# videommd claim hc generate patch end
 
 class Internvl2Template(InternvlTemplate):
     VIDEO_SEGMENTS = 8
@@ -219,11 +160,6 @@ class Internvl2Template(InternvlTemplate):
         encoded['input_ids'], encoded['labels'], encoded['loss_scale'] = self._extend_tokens(
             input_ids, labels, loss_scale, idx_list, _get_new_tokens)
         encoded['pixel_values'] = pixel_values
-        # videommd claim hc template patch start
-        veracity_label = extract_veracity_label(inputs)
-        if veracity_label is not None:
-            encoded['veracity_label'] = veracity_label
-        # videommd claim hc template patch end
         return encoded
 
 
