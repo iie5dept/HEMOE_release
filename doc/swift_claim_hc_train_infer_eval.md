@@ -98,4 +98,14 @@ python scripts/evaluate_swift_predictions.py \
 
 训练时每个 phase 配置都包含 `val_dataset` 和 `eval_strategy: epoch`，因此会在每个 epoch 结束后自动进行验证集评估。
 
+所有训练配置使用 `acc_strategy: seq`，并通过下面三个参数按验证集序列准确率选择最佳 checkpoint：
+
+```yaml
+load_best_model_at_end: true
+metric_for_best_model: acc
+greater_is_better: true
+```
+
+phase2 到 phase4 的启动器会优先读取上一阶段 `trainer_state.json` 中的 `best_model_checkpoint`；旧实验没有最佳 checkpoint 记录时，才回退到最近保存的有效 checkpoint。
+
 训练参数由 YAML 管理；推理 adapter 使用 `--adapters` 显式指定，避免自动选择到其他实验的 checkpoint。

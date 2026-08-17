@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import sys
 from pathlib import Path
@@ -14,7 +15,7 @@ def _is_adapter_dir(path: Path) -> bool:
     has_config = (path / "adapter_config.json").is_file()
     has_weights = any(
         (path / filename).is_file()
-        for filename in ("adapter_model.safetensors", "adapter_model.bin")
+        for filename in ("adapter_model.safetensors", "adapter_model.bin")                           
     )
     return has_config and has_weights
 
@@ -28,12 +29,40 @@ def _checkpoint_step(path: Path) -> int:
     return -1
 
 
+def _best_adapter_from_trainer_state(output_dir: Path) -> Path | None:
+    state_paths = sorted(
+        output_dir.rglob("trainer_state.json"),
+        key=lambda path: (path.stat().st_mtime, _checkpoint_step(path), str(path)),
+        reverse=True,
+    )
+    for state_path in state_paths:
+        try:
+            with state_path.open("r", encoding="utf-8") as handle:
+                state = json.load(handle)
+        except (OSError, ValueError, TypeError):
+            continue
+
+        best_checkpoint = state.get("best_model_checkpoint")
+        if not best_checkpoint:
+            continue
+        best_path = Path(str(best_checkpoint)).expanduser()
+        if not best_path.is_absolute():
+            best_path = (state_path.parent / best_path).resolve()
+        if _is_adapter_dir(best_path):
+            return best_path
+    return None
+
+
 def resolve_adapter_from_output_dir(output_dir: Path) -> Path:
     output_dir = output_dir.expanduser().resolve()
     if not output_dir.is_dir():
         raise FileNotFoundError(f"Adapter output directory does not exist: {output_dir}")
     if _is_adapter_dir(output_dir):
         return output_dir
+
+    best_adapter = _best_adapter_from_trainer_state(output_dir)
+    if best_adapter is not None:
+        return best_adapter
 
     candidates = {
         config_path.parent
