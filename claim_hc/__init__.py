@@ -1,3 +1,5 @@
 """Local helpers for the videommd Swift wrappers."""
 
-__all__: list[str] = []
+from .runtime import install_claim_hc_runtime
+
+__all__ = ["install_claim_hc_runtime"]

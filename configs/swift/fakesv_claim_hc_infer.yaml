@@ -1,0 +1,25 @@
+ENV:
+  CUDA_VISIBLE_DEVICES: "4,5,6,7"
+  VIDEOMMD_CLAIM_HC_ENABLE: "true"
+  VIDEOMMD_CLAIM_HC_STAGE: "phase4"
+  VIDEOMMD_CLAIM_HC_EXPERT_RANK: "8"
+  VIDEOMMD_CLAIM_HC_TOP_K: "2"
+  VIDEOMMD_CLAIM_HC_REQUIRE_ADAPTER: "true"
+
+model: /data2/573ops_ser/models/InternVL-8B
+dataset: /data2/573ops_ser/projects/videommd/data/swift/fakesv/fakesv_test.jsonl
+system: |-
+  你是一个短视频虚假新闻检测助手。请根据视频内容和给定的文本上下文，判断该短视频所表达的新闻事件或主张是真实还是虚假。只回答一个词：real 或 fake。
+template: internvl2_5
+max_batch_size: 4
+torch_dtype: bfloat16
+infer_backend: transformers
+max_length: 8192
+attn_impl: flash_attn
+split_dataset_ratio: 1.0
+max_new_tokens: 1
+metric: acc
+data_seed: 2025
+seed: 2025
+temperature: 0
+result_path: /data2/573ops_ser/projects/videommd/outputs/swift/fakesv_claim_hc_phase4_ddpfix/fakesv_phase4_test_predictions.jsonl

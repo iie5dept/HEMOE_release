@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -39,4 +40,17 @@ def register_local_internvl_template(template_file: str | Path) -> ModuleType:
         spec.loader.exec_module(module)
     finally:
         template_register.register_template = original_register_template
+
+    mapping = getattr(template_register, "TEMPLATE_MAPPING", {})
+    local_types = []
+    for template_type, template_meta in mapping.items():
+        template_cls = getattr(template_meta, "template_cls", None)
+        if getattr(template_cls, "__module__", None) == module_name:
+            local_types.append(str(template_type))
+    if not local_types:
+        raise RuntimeError(
+            f"Local InternVL template loaded from {template_path}, but it did not replace TEMPLATE_MAPPING."
+        )
+    if os.environ.get("RANK", "0") == "0":
+        print(f"[videommd] local InternVL templates registered: {', '.join(local_types)}")
     return module

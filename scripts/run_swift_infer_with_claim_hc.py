@@ -13,10 +13,14 @@ from claim_hc.launcher import rewrite_sys_argv
 def main() -> None:
     rewrite_sys_argv(sys.argv[1:])
 
-    from swift.pipelines import infer_main
     from claim_hc.local_template import register_local_internvl_template
+    from claim_hc.runtime import install_claim_hc_runtime
 
     register_local_internvl_template(REPO_ROOT / "forks" / "claim_hc" / "internvl.py")
+    install_claim_hc_runtime()
+
+    from swift.pipelines import infer_main
+
     infer_main()
 
 

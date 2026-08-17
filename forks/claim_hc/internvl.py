@@ -14,6 +14,7 @@ from swift.template.vision_utils import transform_image
 from swift.template.templates.llm import GptOssTemplateMeta, GptTemplate
 from swift.template.templates.microsoft import Phi3TemplateMeta
 from swift.template.templates.utils import ChatmlTemplateMeta
+from claim_hc.runtime import apply_claim_hc
 from claim_hc.video_fallback import safe_load_video_internvl
 
 
@@ -89,6 +90,16 @@ class InternvlTemplate(Template):
             vit_embeds = model.extract_feature(dummy_pixel_values).to(device=device)
             inputs_embeds += vit_embeds.mean() * 0.
 
+        attention_mask = inputs.get('attention_mask')
+        labels = inputs.get('labels')
+        inputs_embeds, _ = apply_claim_hc(
+            model=model,
+            inputs_embeds=inputs_embeds,
+            input_ids=input_ids,
+            selected=selected,
+            attention_mask=attention_mask,
+            labels=labels,
+        )
         return {'inputs_embeds': inputs_embeds}
 
 
