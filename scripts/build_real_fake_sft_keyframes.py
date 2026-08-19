@@ -21,13 +21,16 @@ FAKE_NEWS_PROMPT = (
     "Label the sample real if the claim itself is factually true as stated and the sampled frames "
     "plus accompanying context genuinely support it, even if the clip looks surprising, sensational, "
     "or visually unusual.\n\n"
-    "Important: evaluate the exact wording of the claim. If the claim says that an image, video, or "
-    "story is fake, edited, staged, or did not happen, then label the sample real when that "
-    "debunking claim is true.\n\n"
-    "Do not label a sample fake only because the claim sounds bizarre, miraculous, humorous, or "
-    "politically extreme. Do not label a sample real only because the frames look authentic or "
-    "because the speaker, topic, or location is real. Use uploader identity, political stance, "
-    "hashtags, emotional tone, and publish time only as auxiliary evidence.\n\n"
+    "Important: evaluate the exact wording and polarity of the claim. A claim may itself say that "
+    "an image, video, or story is fake, edited, staged, or did not happen. Apply the same evidence "
+    "standard to that debunking claim; do not invert the label merely because words such as fake or "
+    "edited appear in the claim.\n\n"
+    "Do not decide from the claim's plausibility or topic alone. A bizarre, miraculous, humorous, or "
+    "politically extreme claim is not automatically fake, and a familiar claim is not automatically "
+    "real. Compare the exact claim with the sampled frames, caption, and metadata. Do not label a "
+    "sample real only because the frames look authentic or because the speaker, topic, or location "
+    "is real. Use uploader identity, political stance, hashtags, emotional tone, and publish time "
+    "only as auxiliary evidence.\n\n"
     "Reply with exactly one word: real or fake."
 )
 
@@ -38,8 +41,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--annotation-path", type=Path, default=repo_root / "data" / "fakett" / "data.json")
     parser.add_argument("--split-dir", type=Path, default=repo_root / "external" / "ExMRD" / "data" / "FakeTT" / "vids")
     parser.add_argument("--video-root", type=Path, required=True)
-    parser.add_argument("--output-dir", type=Path, default=repo_root / "data" / "swift_keyframes" / "fakett")
-    parser.add_argument("--frame-dir", type=Path, default=repo_root / "data" / "swift_keyframes" / "fakett_frames")
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=repo_root / "data" / "swift_keyframes" / "fakett_prompt_v2",
+    )
+    parser.add_argument(
+        "--frame-dir",
+        type=Path,
+        default=repo_root / "data" / "swift_keyframes" / "fakett_frames_prompt_v2",
+    )
     parser.add_argument("--video-extension", type=str, default=".mp4")
     parser.add_argument("--num-frames", type=int, default=8)
     parser.add_argument("--max-fps", type=float, default=2.0)
