@@ -7,7 +7,7 @@ from typing import Any, Dict
 import torch
 from torch import Tensor, nn
 
-from .modules import NativeEvidenceMoE, gather_tokens_by_mask
+from .modules import NativeEvidenceMoE
 
 _PATCHED = False
 _ADAPTER_ENV = "VIDEOMMD_CLAIM_HC_ADAPTERS"
@@ -38,10 +38,6 @@ def _env_float(name: str, default: float) -> float:
         return float(value)
     except ValueError:
         return default
-
-
-def _get_stage() -> str:
-    return os.environ.get("VIDEOMMD_CLAIM_HC_STAGE", "phase4").strip().lower()
 
 
 def _extract_attr_or_key(obj: Any, name: str, default: Any = None) -> Any:
@@ -187,10 +183,6 @@ def _set_trainable(module: nn.Module, enabled: bool) -> None:
         param.requires_grad = enabled
 
 
-def _set_parameter_trainable(param: Tensor, enabled: bool) -> None:
-    param.requires_grad = enabled
-
-
 def _active_adapter_name(wrapper: nn.Module, available: list[str]) -> str:
     active = getattr(wrapper, "active_adapter", None)
     if isinstance(active, str) and active in available:
@@ -236,41 +228,9 @@ def _resolve_claim_hc_module(container: nn.Module, freeze_inactive: bool = False
     return active_module
 
 
-def _configure_stage(container: nn.Module, stage: str) -> NativeEvidenceMoE:
+def _configure_claim_hc_module(container: nn.Module) -> NativeEvidenceMoE:
     module = _resolve_claim_hc_module(container, freeze_inactive=True)
-    _set_trainable(module, False)
-
-    phase1_modules = (
-        module.visual_scorer,
-        module.text_scorer,
-        module.cross_adapter,
-        module.shared_expert,
-    )
-    phase2_modules = phase1_modules + (
-        module.visual_expert,
-        module.text_expert,
-        module.cross_expert,
-    )
-    if stage == "phase1":
-        trainable_modules = phase1_modules
-        train_scales = True
-    elif stage == "phase2":
-        trainable_modules = phase2_modules
-        train_scales = True
-    elif stage == "phase3":
-        trainable_modules = (module.coarse_router, module.expert_router)
-        train_scales = False
-    elif stage == "phase4":
-        trainable_modules = tuple(module.children())
-        train_scales = True
-    else:
-        raise ValueError(f"Unsupported VIDEOMMD_CLAIM_HC_STAGE: {stage!r}")
-
-    for child in trainable_modules:
-        _set_trainable(child, True)
-    _set_parameter_trainable(module.visual_token_scale, train_scales)
-    _set_parameter_trainable(module.text_token_scale, train_scales)
-    module._videommd_configured_stage = stage
+    _set_trainable(module, True)
     return module
 
 
@@ -285,7 +245,6 @@ def ensure_claim_hc(model: nn.Module) -> None:
     module = NativeEvidenceMoE(
         hidden_size=hidden_size,
         expert_rank=_env_int("VIDEOMMD_CLAIM_HC_EXPERT_RANK", 8),
-        top_k=_env_int("VIDEOMMD_CLAIM_HC_TOP_K", 2),
     )
     device = target_model.get_input_embeddings().weight.device
     dtype = target_model.get_input_embeddings().weight.dtype
@@ -300,7 +259,7 @@ def configure_claim_hc(model: nn.Module) -> NativeEvidenceMoE | None:
     container = getattr(target_model, "claim_hc", None)
     if container is None:
         return None
-    return _configure_stage(container, _get_stage())
+    return _configure_claim_hc_module(container)
 
 
 def apply_claim_hc(
@@ -355,10 +314,8 @@ def apply_claim_hc(
         text_mask = text_mask & attention_mask.to(inputs_embeds.device).bool()
     visual_mask = selected
 
-    visual_tokens, visual_token_mask = gather_tokens_by_mask(inputs_embeds, visual_mask)
-    text_tokens, text_token_mask = gather_tokens_by_mask(inputs_embeds, text_mask)
-    invalid_visual = ~visual_token_mask.any(dim=1)
-    invalid_text = ~text_token_mask.any(dim=1)
+    invalid_visual = ~visual_mask.any(dim=1)
+    invalid_text = ~text_mask.any(dim=1)
     if invalid_visual.any() or invalid_text.any():
         bad_rows = (invalid_visual | invalid_text).nonzero(as_tuple=False).flatten().tolist()
         raise RuntimeError(
@@ -367,16 +324,13 @@ def apply_claim_hc(
         )
 
     output = claim_hc(
-        visual_tokens=visual_tokens,
-        visual_mask=visual_token_mask,
-        text_tokens=text_tokens,
-        text_mask=text_token_mask,
-        stage=_get_stage(),
+        visual_tokens=inputs_embeds,
+        visual_mask=visual_mask,
+        text_tokens=inputs_embeds,
+        text_mask=text_mask,
     )
 
-    visual_delta = visual_mask.unsqueeze(-1).to(inputs_embeds.dtype) * output.visual_update.unsqueeze(1)
-    text_delta = text_mask.unsqueeze(-1).to(inputs_embeds.dtype) * output.text_update.unsqueeze(1)
-    updated = inputs_embeds + visual_delta + text_delta
+    updated = inputs_embeds + output.visual_update + output.text_update
 
     aux_losses = dict(output.aux_losses)
     target_model._claim_hc_aux_losses = aux_losses
@@ -489,15 +443,13 @@ def install_claim_hc_runtime() -> None:
             total = sum(param.numel() for param in module.parameters())
             trainable = sum(param.numel() for param in module.parameters() if param.requires_grad)
             print(
-                f"[videommd] claim_hc stage={_get_stage()} "
-                f"parameters={total:,} trainable={trainable:,}"
+                f"[videommd] claim_hc parameters={total:,} trainable={trainable:,}"
             )
         return original_create_optimizer(self, *args, **kwargs)
 
     def patched_wrap_model(self, model, *args, **kwargs):
         # This is the final point before Accelerate constructs DDP's reducer.
-        # PEFT may reactivate all modules_to_save parameters after Trainer init,
-        # so stage-specific freezing must be repeated here.
+        # PEFT may reactivate original_module parameters after Trainer init.
         module = configure_claim_hc(model)
         target_model = _unwrap_model(model)
         container = getattr(target_model, "claim_hc", None)
@@ -512,8 +464,7 @@ def install_claim_hc_runtime() -> None:
         if module is not None and os.environ.get("RANK", "0") == "0":
             trainable_tensors = sum(1 for param in module.parameters() if param.requires_grad)
             print(
-                f"[videommd] DDP-ready claim_hc stage={_get_stage()} "
-                f"trainable_tensors={trainable_tensors}"
+                f"[videommd] DDP-ready claim_hc trainable_tensors={trainable_tensors}"
             )
         return original_wrap_model(self, model, *args, **kwargs)
 

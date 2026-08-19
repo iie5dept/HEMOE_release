@@ -2,13 +2,8 @@ ENV:
   CUDA_VISIBLE_DEVICES: "4,5,6,7"
   NPROC_PER_NODE: "4"
   VIDEOMMD_CLAIM_HC_ENABLE: "true"
-  VIDEOMMD_CLAIM_HC_STAGE: "phase4"
   VIDEOMMD_CLAIM_HC_EXPERT_RANK: "8"
-  VIDEOMMD_CLAIM_HC_TOP_K: "2"
-  VIDEOMMD_CLAIM_HC_BALANCE_LOSS: "0.01"
-
-# Set manually before training phase4:
-# adapters: /data2/573ops_ser/projects/videommd/outputs/swift/fakesv_claim_hc_phase3_ddpfix/.../checkpoint-xxx
+  VIDEOMMD_CLAIM_HC_BALANCE_LOSS: "0.001"
 
 model: /data2/573ops_ser/models/InternVL-8B
 dataset: /data2/573ops_ser/projects/videommd/data/swift/fakesv/fakesv_train.jsonl
@@ -19,12 +14,12 @@ system: |-
 template: internvl2_5
 torch_dtype: bfloat16
 attn_impl: flash_attn
-num_train_epochs: 1
+num_train_epochs: 4
 per_device_train_batch_size: 2
 per_device_eval_batch_size: 1
 gradient_accumulation_steps: 2
 split_dataset_ratio: 0.0
-learning_rate: 1e-5
+learning_rate: 3e-5
 lora_rank: 8
 lora_alpha: 32
 target_modules: all-linear
@@ -40,11 +35,11 @@ metric_for_best_model: seq_acc
 greater_is_better: true
 eval_steps: 1
 save_steps: 1
-save_total_limit: 3
+save_total_limit: 4
 logging_steps: 10
 max_length: 8192
-output_dir: /data2/573ops_ser/projects/videommd/outputs/swift/fakesv_claim_hc_phase4_ddpfix
-warmup_ratio: 0.05
+output_dir: /data2/573ops_ser/projects/videommd/outputs/swift/fakesv_claim_hc_joint_ddpfix
+warmup_ratio: 0.1
 data_seed: 42
 seed: 42
 temperature: 0
