@@ -8,27 +8,17 @@ from typing import Dict, Iterable, List
 
 
 FAKE_NEWS_PROMPT = (
-    "Determine whether the literal news claim or event stated in <claim> is factually real or fake "
-    "based on this short video and the auxiliary observations.\n\n"
-    "This task is short-video news veracity detection, not deepfake detection. Judge the truth of "
-    "the stated claim itself, not whether the footage merely looks edited, dramatic, or plausible.\n\n"
-    "Label the sample fake if the claim is false, misleading in context, uses old footage presented "
-    "as a new event, mismatches the claimed time, place, person, quote, or event, or uses unrelated "
-    "or repurposed footage to support a false headline. A normal-looking or authentic-looking video "
-    "can still be fake if it does not actually support the specific claim.\n\n"
-    "Label the sample real if the claim itself is factually true as stated and the video plus "
-    "accompanying context genuinely support it, even if the clip looks surprising, sensational, or "
-    "visually unusual.\n\n"
-    "Important: evaluate the exact wording and polarity of the claim. A claim may itself say that "
-    "an image, video, or story is fake, edited, staged, or did not happen. Apply the same evidence "
-    "standard to that debunking claim; do not invert the label merely because words such as fake or "
-    "edited appear in the claim.\n\n"
-    "Do not decide from the claim's plausibility or topic alone. A bizarre, miraculous, humorous, or "
-    "politically extreme claim is not automatically fake, and a familiar claim is not automatically "
-    "real. Compare the exact claim with the visual content, caption, and metadata. Do not label a "
-    "sample real only because the footage looks authentic or because the speaker, topic, or location "
-    "is real. Use uploader identity, political stance, hashtags, emotional tone, and publish time "
-    "only as auxiliary evidence.\n\n"
+    "Determine whether the news claim or event conveyed by this short video and the auxiliary "
+    "observations is factually real or fake.\n\n"
+    "This task is short-video news veracity detection, not deepfake detection. Judge whether the "
+    "news conveyed by the video and its associated context is true as stated.\n\n"
+    "Label the sample fake if the conveyed news is false, debunked, misleading in context, old "
+    "footage presented as a new event, mismatched with the claimed time, place, person, or event, "
+    "or uses unrelated or repurposed footage to support a false claim.\n\n"
+    "Label the sample real if the conveyed news content is factually true and the video plus "
+    "accompanying context do not misleadingly distort the event.\n\n"
+    "Do not decide based only on uploader identity, political stance, hashtags, emotional tone, "
+    "or whether the footage merely looks visually authentic. Use them only as auxiliary context.\n\n"
     "Reply with exactly one word: real or fake."
 )
 
@@ -39,11 +29,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--annotation-path", type=Path, default=repo_root / "data" / "fakett" / "data.json")
     parser.add_argument("--split-dir", type=Path, default=repo_root / "external" / "ExMRD" / "data" / "FakeTT" / "vids")
     parser.add_argument("--video-root", type=str, required=True)
-    parser.add_argument(
-        "--output-dir",
-        type=Path,
-        default=repo_root / "data" / "swift" / "fakett_prompt_v2",
-    )
+    parser.add_argument("--output-dir", type=Path, default=repo_root / "data" / "swift" / "fakett")
     parser.add_argument("--video-extension", type=str, default=".mp4")
     parser.add_argument("--strict-video-check", action="store_true")
     return parser.parse_args()
