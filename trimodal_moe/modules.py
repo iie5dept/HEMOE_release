@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from itertools import combinations
 
 import torch
 import torch.nn.functional as F
@@ -119,8 +118,7 @@ class ReliabilityRouter(nn.Module):
         super().__init__()
         self.temperature = temperature
         self.num_modalities = num_modalities
-        pair_count = num_modalities * (num_modalities - 1) // 2
-        input_dim = hidden_dim * num_modalities + 4 * num_modalities + pair_count
+        input_dim = hidden_dim * num_modalities
         self.net = nn.Sequential(
             nn.LayerNorm(input_dim),
             nn.Linear(input_dim, router_dim),
@@ -131,28 +129,10 @@ class ReliabilityRouter(nn.Module):
         nn.init.zeros_(self.net[-1].weight)
         nn.init.zeros_(self.net[-1].bias)
 
-    def forward(self, hiddens: list[Tensor], logits: list[Tensor]) -> tuple[Tensor, Tensor]:
-        if len(hiddens) != self.num_modalities or len(logits) != self.num_modalities:
-            raise ValueError(
-                f"Router expected {self.num_modalities} modalities, got {len(hiddens)} and {len(logits)}"
-            )
-        probabilities = [item.float().softmax(dim=-1) for item in logits]
-        entropy = [-(prob * prob.clamp_min(1e-8).log()).sum(dim=-1, keepdim=True) for prob in probabilities]
-        confidence = [(prob.max(dim=-1).values - prob.min(dim=-1).values).unsqueeze(-1) for prob in probabilities]
-        disagreement = [
-            (probabilities[left] - probabilities[right]).abs().sum(dim=-1, keepdim=True)
-            for left, right in combinations(range(self.num_modalities), 2)
-        ]
-        router_features = torch.cat(
-            [
-                *[hidden.float().detach() for hidden in hiddens],
-                *[prob.detach() for prob in probabilities],
-                *[value.detach() for value in entropy],
-                *[value.detach() for value in confidence],
-                *[value.detach() for value in disagreement],
-            ],
-            dim=-1,
-        )
+    def forward(self, hiddens: list[Tensor]) -> tuple[Tensor, Tensor]:
+        if len(hiddens) != self.num_modalities:
+            raise ValueError(f"Router expected {self.num_modalities} modalities, got {len(hiddens)}")
+        router_features = torch.cat([hidden.float().detach() for hidden in hiddens], dim=-1)
         router_logits = self.net(router_features)
         weights = (router_logits / max(self.temperature, 1e-4)).softmax(dim=-1)
         return router_logits, weights
@@ -211,13 +191,13 @@ class FourModalMoEClassifier(nn.Module):
         self.llm_branch = LLMDecisionClassifier(llm_dim, hidden_dim, dropout)
         self.audio_branch = LLMDecisionClassifier(audio_dim, hidden_dim, dropout)
 
-        self.shared_expert = MLPExpert(hidden_dim, expert_dim, dropout)
         self.specialist_experts = nn.ModuleList(
             [MLPExpert(hidden_dim, expert_dim, dropout) for _ in range(4)]
         )
         self.router = ReliabilityRouter(hidden_dim, router_dim, dropout, router_temperature, num_modalities=4)
-        self.fusion_norm = nn.LayerNorm(hidden_dim)
-        self.fusion_classifier = nn.Linear(hidden_dim, 2)
+        fusion_dim = hidden_dim * 4
+        self.fusion_norm = nn.LayerNorm(fusion_dim)
+        self.fusion_classifier = nn.Linear(fusion_dim, 2)
 
     def forward(
         self,
@@ -237,13 +217,12 @@ class FourModalMoEClassifier(nn.Module):
         hiddens = [llm_hidden, visual_hidden, text_hidden, audio_hidden]
         branch_logits = [llm_logits, visual_logits, text_logits, audio_logits]
 
-        _, router_weights = self.router(hiddens, branch_logits)
-        shared = self.shared_expert(torch.stack(hiddens, dim=1).mean(dim=1))
+        _, router_weights = self.router(hiddens)
         specialists = torch.stack(
             [expert(hidden) for expert, hidden in zip(self.specialist_experts, hiddens)], dim=1
         )
-        specialist_update = (specialists * router_weights.to(specialists.dtype).unsqueeze(-1)).sum(dim=1)
-        fused_hidden = self.fusion_norm(shared + specialist_update)
+        weighted_specialists = specialists * router_weights.to(specialists.dtype).unsqueeze(-1)
+        fused_hidden = self.fusion_norm(weighted_specialists.flatten(start_dim=1))
         logits = self.fusion_classifier(fused_hidden)
 
         losses: dict[str, Tensor] = {}

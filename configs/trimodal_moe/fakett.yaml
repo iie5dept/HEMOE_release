@@ -58,7 +58,7 @@ training:
   metric_for_best_model: macro_f1
   greater_is_better: true
   seed: 42
-  output_dir: /data2/573ops_ser/projects/videommd/outputs/trimodal_moe/fakett_llm_text_aux
+  output_dir: /data2/573ops_ser/projects/videommd/outputs/trimodal_moe/fakett_feature_router_weighted_concat
 
 inference:
   split: test

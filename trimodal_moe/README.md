@@ -7,8 +7,8 @@ LoRA on the InternVL language decoder. It combines:
 - cached DINOv3 patch tokens processed by a two-layer Transformer;
 - cached BERT token states processed by a two-layer Transformer;
 - a cached Qwen2-Audio last-prompt-token state;
-- one always-on shared MLP expert and four modality-specific MLP experts;
-- a dense reliability router and a final binary linear classifier.
+- four modality-specific MLP experts without a shared expert;
+- a feature-only dense router and a weighted-concatenation binary classifier.
 
 The assistant answer is used only as the class label. It is never appended to the InternVL input.
 The objective is:
@@ -20,8 +20,10 @@ L = L_fusion
   + balance_loss_weight * L_balance
 ```
 
-`L_router` teaches the router to favor the branch with the lower detached per-sample classification
-loss. This supervision trains only the router and cannot directly distort a modality encoder.
+The router consumes only the concatenated detached modality representations. `L_router` teaches it
+to favor the branch with the lower detached per-sample classification loss, without directly
+distorting a modality encoder. Each specialist output is multiplied by its router weight; the four
+weighted outputs are concatenated rather than summed before the final classifier.
 FakeTT currently sets the visual and audio branch-loss weights to zero, so only `L_llm` and
 `L_text` contribute to the independent-modality term. Visual and audio representations still
 participate in the MoE fusion and receive gradients from `L_fusion`.
@@ -85,11 +87,11 @@ selection rather than a strictly held-out final evaluation, so report it as such
 ```bash
 CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun --standalone --nproc_per_node=4 \
   scripts/infer_trimodal_moe.py configs/trimodal_moe/fakett.yaml \
-  --checkpoint /data2/573ops_ser/projects/videommd/outputs/trimodal_moe/fakett_llm_text_aux/checkpoint-best \
-  --output /data2/573ops_ser/projects/videommd/outputs/trimodal_moe/fakett_llm_text_aux/test_predictions.jsonl
+  --checkpoint /data2/573ops_ser/projects/videommd/outputs/trimodal_moe/fakett_feature_router_weighted_concat/checkpoint-best \
+  --output /data2/573ops_ser/projects/videommd/outputs/trimodal_moe/fakett_feature_router_weighted_concat/test_predictions.jsonl
 
 python scripts/evaluate_trimodal_predictions.py \
-  /data2/573ops_ser/projects/videommd/outputs/trimodal_moe/fakett_llm_text_aux/test_predictions.jsonl
+  /data2/573ops_ser/projects/videommd/outputs/trimodal_moe/fakett_feature_router_weighted_concat/test_predictions.jsonl
 ```
 
 The prediction file also records each branch probability and the four router weights for analysis.
