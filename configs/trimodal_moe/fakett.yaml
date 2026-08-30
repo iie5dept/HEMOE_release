@@ -1,0 +1,64 @@
+model:
+  path: /data2/573ops_ser/models/InternVL-8B
+  dtype: bfloat16
+  lora_rank: 8
+  lora_alpha: 32
+  lora_dropout: 0.05
+  gradient_checkpointing: true
+  use_flash_attn: true
+
+data:
+  train_path: /data2/573ops_ser/projects/videommd/data/swift/fakett/fakett_train.jsonl
+  val_path: /data2/573ops_ser/projects/videommd/data/swift/fakett/fakett_val.jsonl
+  test_path: /data2/573ops_ser/projects/videommd/data/swift/fakett/fakett_test.jsonl
+  visual_manifest: /data2/573ops_ser/projects/videommd/data/dinov3_features/fakett/dinov3_features.jsonl
+  text_manifest: /data2/573ops_ser/projects/videommd/data/bert_features/fakett/bert_features.jsonl
+  audio_manifest: /data2/573ops_ser/projects/videommd/data/qwen2_audio_features/fakett/qwen2_audio_features.jsonl
+  system_prompt: You are a multimodal assistant for short-video news veracity detection.
+  video_segments: 8
+  image_size: 448
+  max_length: 8192
+
+fusion:
+  visual_dim: 1024
+  text_dim: 768
+  audio_dim: 4096
+  hidden_dim: 256
+  transformer_layers: 2
+  transformer_heads: 8
+  transformer_ff_dim: 1024
+  expert_dim: 512
+  router_dim: 128
+  dropout: 0.1
+  router_temperature: 1.0
+  oracle_temperature: 0.5
+  modality_loss_weight: 0.3
+  llm_loss_weight: 1.0
+  visual_loss_weight: 0.0
+  text_loss_weight: 1.0
+  audio_loss_weight: 0.0
+  router_loss_weight: 0.1
+  balance_loss_weight: 0.01
+
+training:
+  epochs: 5
+  batch_size: 1
+  eval_batch_size: 1
+  gradient_accumulation_steps: 4
+  lora_learning_rate: 2.0e-5
+  head_learning_rate: 1.0e-4
+  weight_decay: 0.01
+  warmup_ratio: 0.1
+  router_warmup_steps: 100
+  max_grad_norm: 1.0
+  logging_steps: 10
+  num_workers: 2
+  evaluate: true
+  evaluation_split: test
+  metric_for_best_model: macro_f1
+  greater_is_better: true
+  seed: 42
+  output_dir: /data2/573ops_ser/projects/videommd/outputs/trimodal_moe/fakett_llm_text_aux
+
+inference:
+  split: test
