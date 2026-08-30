@@ -245,6 +245,8 @@ def ensure_claim_hc(model: nn.Module) -> None:
     module = NativeEvidenceMoE(
         hidden_size=hidden_size,
         expert_rank=_env_int("VIDEOMMD_CLAIM_HC_EXPERT_RANK", 8),
+        num_fake_experts=_env_int("VIDEOMMD_CLAIM_HC_NUM_FAKE_EXPERTS", 4),
+        router_temperature=_env_float("VIDEOMMD_CLAIM_HC_ROUTER_TEMPERATURE", 1.0),
     )
     device = target_model.get_input_embeddings().weight.device
     dtype = target_model.get_input_embeddings().weight.dtype
@@ -345,23 +347,37 @@ def _add_aux_loss(base_loss: Any, aux_loss: Tensor) -> Any:
     return base_loss + aux_loss
 
 
-def _sum_aux_losses(model: nn.Module) -> Tensor | None:
+def _take_claim_hc_aux_losses(model: nn.Module) -> Dict[str, Tensor]:
     target_model = _unwrap_model(model)
     aux = getattr(target_model, "_claim_hc_aux_losses", None)
-    if not aux:
-        return None
-    balance_weight = _env_float("VIDEOMMD_CLAIM_HC_BALANCE_LOSS", 0.01)
-    total = None
-    for name, weight in {"balance_loss": balance_weight}.items():
-        if weight <= 0:
-            continue
-        value = aux.get(name)
-        if value is None:
-            continue
-        term = value * weight
-        total = term if total is None else total + term
     target_model._claim_hc_aux_losses = None
-    return total
+    if not aux:
+        return {}
+    return dict(aux)
+
+
+def _build_weighted_auxiliary_loss(aux: Dict[str, Tensor]) -> Tensor | None:
+    orthogonality_loss = aux.get("orthogonality_loss")
+    weight = _env_float("VIDEOMMD_CLAIM_HC_ORTHOGONALITY_LOSS", 0.1)
+    if orthogonality_loss is None or weight <= 0:
+        return None
+    return orthogonality_loss * weight
+
+
+def _record_claim_hc_metrics(model: nn.Module, aux: Dict[str, Tensor]) -> None:
+    names = (
+        "orthogonality_loss",
+        "router_entropy",
+        "max_expert_load",
+        "shared_update_norm",
+        "specialist_update_norm",
+    )
+    metrics = {
+        f"claim_hc/{name}": float(aux[name].detach().float().item())
+        for name in names
+        if name in aux and aux[name].numel() == 1
+    }
+    _unwrap_model(model)._claim_hc_last_metrics = metrics
 
 
 def build_claim_text_mask(input_ids: Tensor, selected: Tensor, processor: Any | None = None) -> Tensor:
@@ -386,28 +402,6 @@ def build_claim_text_mask(input_ids: Tensor, selected: Tensor, processor: Any | 
     return compact_mask
 
 
-def extract_veracity_label(inputs: Any) -> Any:
-    """Backward-compatible helper for older patched swift templates."""
-    direct = _extract_attr_or_key(inputs, "veracity_label", None)
-    if direct is not None:
-        return direct
-
-    messages = _extract_attr_or_key(inputs, "messages", None)
-    if not messages:
-        return None
-    for message in reversed(messages):
-        if not isinstance(message, dict):
-            continue
-        if message.get("role") != "assistant":
-            continue
-        content = str(message.get("content", "")).strip().lower()
-        if content == "real":
-            return 0
-        if content == "fake":
-            return 1
-    return None
-
-
 def install_claim_hc_runtime() -> None:
     global _PATCHED
     if _PATCHED:
@@ -422,6 +416,7 @@ def install_claim_hc_runtime() -> None:
     original_wrap_model = Seq2SeqTrainer._wrap_model
     original_compute_loss = Seq2SeqTrainer.compute_loss
     original_training_step = Seq2SeqTrainer.training_step
+    original_log = Seq2SeqTrainer.log
 
     def patched_get_model_processor(self, *args, **kwargs):
         model, processor = original_get_model_processor(self, *args, **kwargs)
@@ -470,50 +465,64 @@ def install_claim_hc_runtime() -> None:
 
     def patched_compute_loss(self, model, inputs, *args, **kwargs):
         result = original_compute_loss(self, model, inputs, *args, **kwargs)
-        aux_loss = _sum_aux_losses(model)
-        if aux_loss is None or not self.model.training:
+        aux_losses = _take_claim_hc_aux_losses(model)
+        if aux_losses:
+            _record_claim_hc_metrics(model, aux_losses)
+        if not self.model.training or not aux_losses:
             return result
-        return _add_aux_loss(result, aux_loss)
+
+        auxiliary_loss = _build_weighted_auxiliary_loss(aux_losses)
+        if auxiliary_loss is None:
+            return result
+
+        return _add_aux_loss(result, auxiliary_loss)
+
+    def patched_log(self, logs, *args, **kwargs):
+        target_model = _unwrap_model(self.model)
+        metrics = getattr(target_model, "_claim_hc_last_metrics", None)
+        if metrics:
+            logs = dict(logs)
+            logs.update(metrics)
+        return original_log(self, logs, *args, **kwargs)
 
     def patched_training_step(self, model, inputs, *args, **kwargs):
-        if getattr(self, "_videommd_grad_audited", False):
-            return original_training_step(self, model, inputs, *args, **kwargs)
-
         target_model = _unwrap_model(model)
         container = getattr(target_model, "claim_hc", None)
         if container is None:
-            self._videommd_grad_audited = True
             return original_training_step(self, model, inputs, *args, **kwargs)
 
         module = _resolve_claim_hc_module(container, freeze_inactive=False)
+        should_audit = not getattr(self, "_videommd_grad_audited", False)
         seen: set[str] = set()
         handles = []
-        audited_names = []
-        for name, parameter in module.named_parameters():
-            if not parameter.requires_grad:
-                continue
-            audited_names.append(name)
+        audited_names: list[str] = []
+        if should_audit:
+            for name, parameter in module.named_parameters():
+                if not parameter.requires_grad:
+                    continue
+                audited_names.append(name)
 
-            def mark_gradient(gradient, parameter_name=name):
-                seen.add(parameter_name)
-                return gradient
+                def mark_gradient(gradient, parameter_name=name):
+                    seen.add(parameter_name)
+                    return gradient
 
-            handles.append(parameter.register_hook(mark_gradient))
+                handles.append(parameter.register_hook(mark_gradient))
         try:
             result = original_training_step(self, model, inputs, *args, **kwargs)
         finally:
             for handle in handles:
                 handle.remove()
 
-        missing = sorted(set(audited_names) - seen)
-        if missing:
-            raise RuntimeError(
-                "Active claim_hc parameters are outside the training loss graph: "
-                + ", ".join(missing[:12])
-            )
-        self._videommd_grad_audited = True
-        if os.environ.get("RANK", "0") == "0":
-            print(f"[videommd] claim_hc gradient audit passed: {len(seen)}/{len(audited_names)} tensors")
+        if should_audit:
+            missing = sorted(set(audited_names) - seen)
+            if missing:
+                raise RuntimeError(
+                    "Active claim_hc parameters are outside the training loss graph: "
+                    + ", ".join(missing[:12])
+                )
+            self._videommd_grad_audited = True
+            if os.environ.get("RANK", "0") == "0":
+                print(f"[videommd] claim_hc gradient audit passed: {len(seen)}/{len(audited_names)} tensors")
         return result
 
     BaseArguments.get_model_processor = patched_get_model_processor
@@ -522,4 +531,5 @@ def install_claim_hc_runtime() -> None:
     Seq2SeqTrainer._wrap_model = patched_wrap_model
     Seq2SeqTrainer.compute_loss = patched_compute_loss
     Seq2SeqTrainer.training_step = patched_training_step
+    Seq2SeqTrainer.log = patched_log
     _PATCHED = True

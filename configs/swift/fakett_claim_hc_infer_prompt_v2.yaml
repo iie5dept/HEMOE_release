@@ -1,7 +1,10 @@
 ENV:
   CUDA_VISIBLE_DEVICES: "4,5,6,7"
+  NPROC_PER_NODE: "4"
   VIDEOMMD_CLAIM_HC_ENABLE: "true"
   VIDEOMMD_CLAIM_HC_EXPERT_RANK: "8"
+  VIDEOMMD_CLAIM_HC_NUM_FAKE_EXPERTS: "4"
+  VIDEOMMD_CLAIM_HC_ROUTER_TEMPERATURE: "1.0"
   VIDEOMMD_CLAIM_HC_REQUIRE_ADAPTER: "true"
 
 model: /data2/573ops_ser/models/InternVL-8B
@@ -20,4 +23,4 @@ metric: acc
 data_seed: 2025
 seed: 2025
 temperature: 0
-result_path: /data2/573ops_ser/projects/videommd/outputs/swift/fakett_claim_hc_joint_prompt_v2/fakett_prompt_v2_test_predictions.jsonl
+result_path: /data2/573ops_ser/projects/videommd/outputs/swift/fakett_claim_hc_shared4_orth_prompt_v2/fakett_shared4_orth_prompt_v2_test_predictions.jsonl

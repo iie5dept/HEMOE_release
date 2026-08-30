@@ -3,11 +3,12 @@ ENV:
   NPROC_PER_NODE: "4"
   VIDEOMMD_CLAIM_HC_ENABLE: "true"
   VIDEOMMD_CLAIM_HC_EXPERT_RANK: "8"
-  VIDEOMMD_CLAIM_HC_BALANCE_LOSS: "0.001"
+  VIDEOMMD_CLAIM_HC_NUM_FAKE_EXPERTS: "4"
+  VIDEOMMD_CLAIM_HC_ROUTER_TEMPERATURE: "1.0"
+  VIDEOMMD_CLAIM_HC_ORTHOGONALITY_LOSS: "0.1"
 
 model: /data2/573ops_ser/models/InternVL-8B
 dataset: /data2/573ops_ser/projects/videommd/data/swift/fakett/fakett_train.jsonl
-val_dataset: /data2/573ops_ser/projects/videommd/data/swift/fakett/fakett_val.jsonl
 acc_strategy: seq
 system: |-
   You are a multimodal assistant for short-video news veracity detection.
@@ -16,7 +17,6 @@ torch_dtype: bfloat16
 attn_impl: flash_attn
 num_train_epochs: 5
 per_device_train_batch_size: 2
-per_device_eval_batch_size: 1
 gradient_accumulation_steps: 2
 split_dataset_ratio: 0.0
 learning_rate: 8e-5
@@ -29,16 +29,13 @@ freeze_vit: true
 freeze_aligner: true
 ddp_find_unused_parameters: true
 save_strategy: epoch
-eval_strategy: epoch
-load_best_model_at_end: true
-metric_for_best_model: seq_acc
-greater_is_better: true
-eval_steps: 1
+eval_strategy: "no"
+load_best_model_at_end: false
 save_steps: 1
 save_total_limit: 4
 logging_steps: 10
 max_length: 8192
-output_dir: /data2/573ops_ser/projects/videommd/outputs/swift/fakett_claim_hc_joint_ddpfix
+output_dir: /data2/573ops_ser/projects/videommd/outputs/swift/fakett_claim_hc_shared4_orth
 warmup_ratio: 0.1
 data_seed: 42
 seed: 42

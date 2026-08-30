@@ -5,6 +5,7 @@ from typing import Dict
 
 import torch
 from torch import Tensor, nn
+from torch.nn import functional as F
 
 
 def masked_attention_pool(sequence: Tensor, mask: Tensor, scorer: nn.Module) -> Tensor:
@@ -81,9 +82,15 @@ class NativeEvidenceMoE(nn.Module):
         self,
         hidden_size: int,
         expert_rank: int = 8,
+        num_fake_experts: int = 4,
+        router_temperature: float = 1.0,
     ) -> None:
         super().__init__()
+        if num_fake_experts <= 0:
+            raise ValueError("num_fake_experts must be positive.")
         self.hidden_size = hidden_size
+        self.num_fake_experts = num_fake_experts
+        self.router_temperature = max(float(router_temperature), 1e-4)
 
         self.visual_scorer = nn.Sequential(nn.LayerNorm(hidden_size), nn.Linear(hidden_size, 1, bias=True))
         self.text_scorer = nn.Sequential(nn.LayerNorm(hidden_size), nn.Linear(hidden_size, 1, bias=True))
@@ -94,25 +101,54 @@ class NativeEvidenceMoE(nn.Module):
         router_rank = max(16, expert_rank * 2)
         fusion_rank = max(16, expert_rank * 2)
         self.context_adapter = LowRankBlock(hidden_size * 2, hidden_size, fusion_rank)
+        self.conflict_adapter = LowRankBlock(hidden_size * 2, hidden_size, fusion_rank)
         self.shared_expert = LowRankBlock(hidden_size, hidden_size, expert_rank)
-        self.visual_expert = LowRankBlock(hidden_size, hidden_size, expert_rank)
-        self.text_expert = LowRankBlock(hidden_size, hidden_size, expert_rank)
-        self.joint_expert = LowRankBlock(hidden_size, hidden_size, expert_rank)
+        self.fake_experts = nn.ModuleList(
+            [LowRankBlock(hidden_size, hidden_size, expert_rank) for _ in range(num_fake_experts)]
+        )
 
-        router_input_dim = hidden_size * 3
-        self.expert_router = LowRankRouter(router_input_dim, router_rank, 3)
+        router_input_dim = hidden_size * 4
+        self.expert_router = LowRankRouter(router_input_dim, router_rank, self.num_fake_experts)
 
         token_rank = max(16, expert_rank * 2)
         self.visual_refiner = TokenConditionedBlock(hidden_size, token_rank)
         self.text_refiner = TokenConditionedBlock(hidden_size, token_rank)
 
+    def _build_fake_contexts(
+        self,
+        visual_evidence: Tensor,
+        text_evidence: Tensor,
+        joint_context: Tensor,
+    ) -> list[Tensor]:
+        contrast_inputs = torch.cat([torch.abs(visual_evidence - text_evidence), joint_context], dim=-1)
+        conflict_context = torch.abs(visual_evidence - text_evidence) + self.conflict_adapter(contrast_inputs)
+        base_contexts = [
+            visual_evidence,
+            text_evidence,
+            joint_context,
+            conflict_context,
+        ]
+        if self.num_fake_experts <= len(base_contexts):
+            return base_contexts[: self.num_fake_experts]
+        return base_contexts + [joint_context] * (self.num_fake_experts - len(base_contexts))
+
     def _routing_weights(
         self,
         router_inputs: Tensor,
-    ) -> Tensor:
+    ) -> tuple[Tensor, Tensor]:
         dtype = router_inputs.dtype
-        expert_prob = torch.softmax(self.expert_router(router_inputs).float(), dim=-1).to(dtype)
-        return expert_prob
+        logits = self.expert_router(router_inputs).float() / self.router_temperature
+        expert_prob = torch.softmax(logits, dim=-1).to(dtype)
+        return logits, expert_prob
+
+    def _subspace_orthogonality_loss(self) -> Tensor:
+        experts = [self.shared_expert, *self.fake_experts]
+        row_spaces = [F.normalize(expert.down.weight.float(), p=2, dim=1) for expert in experts]
+        pair_losses = []
+        for left_index, left in enumerate(row_spaces):
+            for right in row_spaces[left_index + 1:]:
+                pair_losses.append((left @ right.transpose(0, 1)).square().sum())
+        return torch.stack(pair_losses).mean()
 
     def forward(
         self,
@@ -132,17 +168,16 @@ class NativeEvidenceMoE(nn.Module):
         )
 
         shared_update = self.shared_expert(joint_context)
-        expert_stack = torch.stack(
-            [
-                self.visual_expert(visual_evidence),
-                self.text_expert(text_evidence),
-                self.joint_expert(joint_context),
-            ],
-            dim=1,
-        )
+        fake_contexts = self._build_fake_contexts(visual_evidence, text_evidence, joint_context)
+        fake_updates = [
+            expert(context)
+            for expert, context in zip(self.fake_experts, fake_contexts)
+        ]
+        expert_stack = torch.stack(fake_updates, dim=1)
+        conflict_context = fake_contexts[min(3, len(fake_contexts) - 1)]
         router_inputs = torch.cat(
-            [joint_context, visual_evidence, text_evidence], dim=-1)
-        expert_weights = self._routing_weights(router_inputs)
+            [joint_context, visual_evidence, text_evidence, conflict_context], dim=-1)
+        _, expert_weights = self._routing_weights(router_inputs)
         specialist_update = (expert_weights.unsqueeze(-1) * expert_stack).sum(dim=1)
         routed_update = shared_update + specialist_update
         refinement_context = joint_context + routed_update
@@ -151,12 +186,21 @@ class NativeEvidenceMoE(nn.Module):
         visual_update = visual_update * visual_mask.unsqueeze(-1).to(visual_update.dtype)
         text_update = text_update * text_mask.unsqueeze(-1).to(text_update.dtype)
 
-        expert_target = expert_weights.new_tensor([1 / 3, 1 / 3, 1 / 3])
-        balance_loss = (expert_weights.mean(dim=0) - expert_target).pow(2).mean()
+        orthogonality_loss = self._subspace_orthogonality_loss()
+        router_entropy = -(
+            expert_weights.float() * expert_weights.float().clamp_min(1e-8).log()
+        ).sum(dim=-1).mean().to(expert_weights.dtype)
+        expert_load = expert_weights.mean(dim=0)
 
         return EvidenceMoEOutput(
             visual_update=visual_update,
             text_update=text_update,
             expert_weights=expert_weights,
-            aux_losses={"balance_loss": balance_loss},
+            aux_losses={
+                "orthogonality_loss": orthogonality_loss,
+                "router_entropy": router_entropy,
+                "max_expert_load": expert_load.max(),
+                "shared_update_norm": shared_update.float().norm(dim=-1).mean(),
+                "specialist_update_norm": specialist_update.float().norm(dim=-1).mean(),
+            },
         )
