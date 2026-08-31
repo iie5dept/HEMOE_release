@@ -187,7 +187,7 @@ class FourModalMoEClassifier(nn.Module):
             "dropout": dropout,
         }
         self.visual_branch = TokenTransformerClassifier(visual_dim, **branch_kwargs)
-        self.text_branch = TokenTransformerClassifier(text_dim, **branch_kwargs)
+        self.text_branch = LLMDecisionClassifier(text_dim, hidden_dim, dropout)
         self.llm_branch = LLMDecisionClassifier(llm_dim, hidden_dim, dropout)
         self.audio_branch = LLMDecisionClassifier(audio_dim, hidden_dim, dropout)
 
@@ -204,15 +204,14 @@ class FourModalMoEClassifier(nn.Module):
         llm_decision_states: Tensor,
         visual_tokens: Tensor,
         visual_attention_mask: Tensor,
-        text_tokens: Tensor,
-        text_attention_mask: Tensor,
+        text_states: Tensor,
         audio_states: Tensor,
         labels: Tensor | None = None,
         router_loss_scale: float = 1.0,
     ) -> FourModalMoEOutput:
         llm_hidden, llm_logits = self.llm_branch(llm_decision_states)
         visual_hidden, visual_logits = self.visual_branch(visual_tokens, visual_attention_mask)
-        text_hidden, text_logits = self.text_branch(text_tokens, text_attention_mask)
+        text_hidden, text_logits = self.text_branch(text_states)
         audio_hidden, audio_logits = self.audio_branch(audio_states)
         hiddens = [llm_hidden, visual_hidden, text_hidden, audio_hidden]
         branch_logits = [llm_logits, visual_logits, text_logits, audio_logits]

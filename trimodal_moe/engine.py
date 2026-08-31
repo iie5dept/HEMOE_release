@@ -75,8 +75,7 @@ def model_inputs(batch: dict[str, Any], router_loss_scale: float = 1.0) -> dict[
         "pixel_values": batch["pixel_values"],
         "visual_tokens": batch["visual_tokens"],
         "visual_attention_mask": batch["visual_attention_mask"],
-        "text_tokens": batch["text_tokens"],
-        "text_attention_mask": batch["text_attention_mask"],
+        "text_states": batch["text_states"],
         "audio_states": batch["audio_states"],
         "labels": batch["labels"],
         "router_loss_scale": router_loss_scale,
@@ -128,6 +127,19 @@ def build_model_and_tokenizer(config: dict[str, Any], checkpoint: str | Path | N
                 f"audio_dim={configured_audio_dim} but Qwen2-Audio cache uses {cached_audio_dim}"
             )
         fusion_config["audio_dim"] = cached_audio_dim
+    text_manifest = config.get("data", {}).get("text_manifest")
+    if text_manifest:
+        with Path(text_manifest).open("r", encoding="utf-8") as handle:
+            first_record = next((json.loads(line) for line in handle if line.strip()), None)
+        if first_record is None:
+            raise ValueError(f"Empty Qwen3 text manifest: {text_manifest}")
+        cached_text_dim = int(first_record["hidden_size"])
+        configured_text_dim = int(fusion_config.get("text_dim", cached_text_dim))
+        if configured_text_dim != cached_text_dim:
+            raise ValueError(
+                f"text_dim={configured_text_dim} but Qwen3 text cache uses {cached_text_dim}"
+            )
+        fusion_config["text_dim"] = cached_text_dim
     adapter_path = checkpoint_path / "language_lora" if checkpoint_path else None
     internvl, tokenizer = load_internvl_with_lora(
         model_path=model_cfg["path"],

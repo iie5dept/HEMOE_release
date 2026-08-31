@@ -103,7 +103,7 @@ class FourModalFeatureDataset(Dataset):
         if missing:
             preview = ", ".join(missing[:8])
             raise ValueError(
-                f"{len(missing)} samples are missing DINO, BERT, or Qwen2-Audio cache entries in "
+                f"{len(missing)} samples are missing DINO, Qwen3-text, or Qwen2-Audio cache entries in "
                 f"{data_path}; first IDs: {preview}"
             )
         if not self.records:
@@ -121,8 +121,8 @@ class FourModalFeatureDataset(Dataset):
         audio = load_file(str(record.audio_feature_path))
         if "patch_tokens" not in visual:
             raise KeyError(f"DINO cache for {record.sample_id} has no patch_tokens")
-        if "token_states" not in text:
-            raise KeyError(f"BERT cache for {record.sample_id} has no token_states")
+        if "text_last_token" not in text:
+            raise KeyError(f"Qwen3 cache for {record.sample_id} has no text_last_token")
         if "audio_last_token" not in audio:
             raise KeyError(f"Qwen2-Audio cache for {record.sample_id} has no audio_last_token")
         return {
@@ -131,10 +131,7 @@ class FourModalFeatureDataset(Dataset):
             "video_path": str(record.video_path),
             "label": record.label,
             "visual_tokens": visual["patch_tokens"],
-            "text_tokens": text["token_states"],
-            "text_attention_mask": text.get(
-                "attention_mask", torch.ones(text["token_states"].shape[0], dtype=torch.bool)
-            ),
+            "text_states": text["text_last_token"],
             "audio_states": audio["audio_last_token"],
         }
 
@@ -265,7 +262,6 @@ class FourModalCollator:
             for frame in load_video_frames(sample["video_path"], self.num_segments)
         ]
         visual_tokens, visual_mask = pad_feature_tokens(sample["visual_tokens"] for sample in samples)
-        text_tokens, text_mask = pad_feature_tokens(sample["text_tokens"] for sample in samples)
         return {
             "ids": [sample["id"] for sample in samples],
             "input_ids": tokenized["input_ids"],
@@ -273,8 +269,7 @@ class FourModalCollator:
             "pixel_values": torch.stack(frames),
             "visual_tokens": visual_tokens,
             "visual_attention_mask": visual_mask,
-            "text_tokens": text_tokens,
-            "text_attention_mask": text_mask,
+            "text_states": torch.stack([sample["text_states"] for sample in samples]),
             "audio_states": torch.stack([sample["audio_states"] for sample in samples]),
             "labels": torch.tensor([sample["label"] for sample in samples], dtype=torch.long),
         }
