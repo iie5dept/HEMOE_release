@@ -23,7 +23,6 @@ DEFAULT_SEARCH_SPACE: dict[str, list[Any]] = {
     "fusion.expert_dim": [256, 512, 768],
     "fusion.router_dim": [64, 128, 256],
     "fusion.dropout": [0.05, 0.1, 0.2],
-    "fusion.router_temperature": [0.5, 0.75, 1.0, 1.5, 2.0],
     "fusion.modality_loss_weight": [0.0, 0.1, 0.3, 0.5],
     "training.lora_learning_rate": [1.0e-5, 2.0e-5, 4.0e-5],
     "training.head_learning_rate": [5.0e-5, 1.0e-4, 2.0e-4, 3.0e-4],

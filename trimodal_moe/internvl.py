@@ -88,7 +88,6 @@ class InternVLFourModalModel(nn.Module):
         text_states: Tensor,
         audio_states: Tensor,
         labels: Tensor | None = None,
-        router_loss_scale: float = 1.0,
     ) -> FourModalMoEOutput:
         decision_states = self.encode_llm(input_ids, attention_mask, pixel_values)
         return self.classifier(
@@ -98,7 +97,6 @@ class InternVLFourModalModel(nn.Module):
             text_states=text_states,
             audio_states=audio_states,
             labels=labels,
-            router_loss_scale=router_loss_scale,
         )
 
 
@@ -170,15 +168,8 @@ def build_trimodal_model(internvl: nn.Module, tokenizer: Any, model_config: dict
         expert_dim=int(model_config.get("expert_dim", 512)),
         router_dim=int(model_config.get("router_dim", 128)),
         dropout=float(model_config.get("dropout", 0.1)),
-        router_temperature=float(model_config.get("router_temperature", 1.0)),
         modality_loss_weight=float(model_config.get("modality_loss_weight", 0.3)),
         llm_loss_weight=float(model_config.get("llm_loss_weight", 1.0)),
-        visual_loss_weight=float(model_config.get("visual_loss_weight", 1.0)),
-        text_loss_weight=float(model_config.get("text_loss_weight", 1.0)),
-        audio_loss_weight=float(model_config.get("audio_loss_weight", 1.0)),
-        router_loss_weight=float(model_config.get("router_loss_weight", 0.1)),
-        balance_loss_weight=float(model_config.get("balance_loss_weight", 0.01)),
-        oracle_temperature=float(model_config.get("oracle_temperature", 0.5)),
     )
     return InternVLFourModalModel(internvl, classifier, image_context_ids[0])
 

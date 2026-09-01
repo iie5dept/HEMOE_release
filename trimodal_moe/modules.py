@@ -12,15 +12,12 @@ class FourModalMoEOutput:
     loss: Tensor | None
     logits: Tensor
     llm_logits: Tensor
-    visual_logits: Tensor
-    text_logits: Tensor
-    audio_logits: Tensor
     router_weights: Tensor
     losses: dict[str, Tensor]
 
 
-class TokenTransformerClassifier(nn.Module):
-    """Aggregate cached contextual tokens with a small trainable Transformer."""
+class TokenTransformerEncoder(nn.Module):
+    """Aggregate cached contextual tokens without an independent classifier."""
 
     def __init__(
         self,
@@ -51,10 +48,9 @@ class TokenTransformerClassifier(nn.Module):
             enable_nested_tensor=False,
         )
         self.dropout = nn.Dropout(dropout)
-        self.classifier = nn.Linear(hidden_dim, 2)
         nn.init.normal_(self.summary_token, std=0.02)
 
-    def forward(self, token_states: Tensor, attention_mask: Tensor) -> tuple[Tensor, Tensor]:
+    def forward(self, token_states: Tensor, attention_mask: Tensor) -> Tensor:
         if token_states.ndim != 3:
             raise ValueError(f"Expected token states [B, T, D], got {tuple(token_states.shape)}")
         if attention_mask.shape != token_states.shape[:2]:
@@ -69,11 +65,10 @@ class TokenTransformerClassifier(nn.Module):
         )
         valid_mask = torch.cat([summary_mask, attention_mask.bool()], dim=1)
         encoded = self.encoder(sequence, src_key_padding_mask=~valid_mask)
-        hidden = self.dropout(encoded[:, 0])
-        return hidden, self.classifier(hidden)
+        return self.dropout(encoded[:, 0])
 
 
-class LLMDecisionClassifier(nn.Module):
+class VectorProjector(nn.Module):
     def __init__(self, input_dim: int, hidden_dim: int, dropout: float) -> None:
         super().__init__()
         self.projector = nn.Sequential(
@@ -83,10 +78,18 @@ class LLMDecisionClassifier(nn.Module):
             nn.Dropout(dropout),
             nn.LayerNorm(hidden_dim),
         )
+
+    def forward(self, decision_states: Tensor) -> Tensor:
+        return self.projector(decision_states)
+
+
+class LLMDecisionClassifier(VectorProjector):
+    def __init__(self, input_dim: int, hidden_dim: int, dropout: float) -> None:
+        super().__init__(input_dim, hidden_dim, dropout)
         self.classifier = nn.Linear(hidden_dim, 2)
 
     def forward(self, decision_states: Tensor) -> tuple[Tensor, Tensor]:
-        hidden = self.projector(decision_states)
+        hidden = super().forward(decision_states)
         return hidden, self.classifier(hidden)
 
 
@@ -112,11 +115,9 @@ class ReliabilityRouter(nn.Module):
         hidden_dim: int,
         router_dim: int,
         dropout: float,
-        temperature: float,
         num_modalities: int,
     ) -> None:
         super().__init__()
-        self.temperature = temperature
         self.num_modalities = num_modalities
         input_dim = hidden_dim * num_modalities
         self.net = nn.Sequential(
@@ -134,12 +135,11 @@ class ReliabilityRouter(nn.Module):
             raise ValueError(f"Router expected {self.num_modalities} modalities, got {len(hiddens)}")
         router_features = torch.cat([hidden.float().detach() for hidden in hiddens], dim=-1)
         router_logits = self.net(router_features)
-        weights = (router_logits / max(self.temperature, 1e-4)).softmax(dim=-1)
-        return router_logits, weights
+        return router_logits, router_logits.softmax(dim=-1)
 
 
 class FourModalMoEClassifier(nn.Module):
-    """Four independently supervised classifiers followed by dense reliability MoE fusion."""
+    """Dense four-modal expert fusion with auxiliary LLM and text supervision."""
 
     def __init__(
         self,
@@ -154,31 +154,14 @@ class FourModalMoEClassifier(nn.Module):
         expert_dim: int = 512,
         router_dim: int = 128,
         dropout: float = 0.1,
-        router_temperature: float = 1.0,
         modality_loss_weight: float = 0.3,
         llm_loss_weight: float = 1.0,
-        visual_loss_weight: float = 1.0,
-        text_loss_weight: float = 1.0,
-        audio_loss_weight: float = 1.0,
-        router_loss_weight: float = 0.1,
-        balance_loss_weight: float = 0.01,
-        oracle_temperature: float = 0.5,
     ) -> None:
         super().__init__()
         self.modality_loss_weight = modality_loss_weight
-        self.branch_loss_weights = (
-            float(llm_loss_weight),
-            float(visual_loss_weight),
-            float(text_loss_weight),
-            float(audio_loss_weight),
-        )
-        if any(weight < 0 for weight in self.branch_loss_weights):
-            raise ValueError(f"Branch loss weights must be non-negative: {self.branch_loss_weights}")
-        if sum(self.branch_loss_weights) <= 0:
-            raise ValueError("At least one branch loss weight must be positive")
-        self.router_loss_weight = router_loss_weight
-        self.balance_loss_weight = balance_loss_weight
-        self.oracle_temperature = oracle_temperature
+        self.llm_loss_weight = float(llm_loss_weight)
+        if self.llm_loss_weight < 0:
+            raise ValueError(f"LLM loss weight must be non-negative: {self.llm_loss_weight}")
         branch_kwargs = {
             "hidden_dim": hidden_dim,
             "num_layers": transformer_layers,
@@ -186,15 +169,15 @@ class FourModalMoEClassifier(nn.Module):
             "ff_dim": transformer_ff_dim,
             "dropout": dropout,
         }
-        self.visual_branch = TokenTransformerClassifier(visual_dim, **branch_kwargs)
-        self.text_branch = LLMDecisionClassifier(text_dim, hidden_dim, dropout)
+        self.visual_branch = TokenTransformerEncoder(visual_dim, **branch_kwargs)
+        self.text_branch = VectorProjector(text_dim, hidden_dim, dropout)
         self.llm_branch = LLMDecisionClassifier(llm_dim, hidden_dim, dropout)
-        self.audio_branch = LLMDecisionClassifier(audio_dim, hidden_dim, dropout)
+        self.audio_branch = VectorProjector(audio_dim, hidden_dim, dropout)
 
         self.specialist_experts = nn.ModuleList(
             [MLPExpert(hidden_dim, expert_dim, dropout) for _ in range(4)]
         )
-        self.router = ReliabilityRouter(hidden_dim, router_dim, dropout, router_temperature, num_modalities=4)
+        self.router = ReliabilityRouter(hidden_dim, router_dim, dropout, num_modalities=4)
         fusion_dim = hidden_dim * 4
         self.fusion_norm = nn.LayerNorm(fusion_dim)
         self.fusion_classifier = nn.Linear(fusion_dim, 2)
@@ -207,14 +190,12 @@ class FourModalMoEClassifier(nn.Module):
         text_states: Tensor,
         audio_states: Tensor,
         labels: Tensor | None = None,
-        router_loss_scale: float = 1.0,
     ) -> FourModalMoEOutput:
         llm_hidden, llm_logits = self.llm_branch(llm_decision_states)
-        visual_hidden, visual_logits = self.visual_branch(visual_tokens, visual_attention_mask)
-        text_hidden, text_logits = self.text_branch(text_states)
-        audio_hidden, audio_logits = self.audio_branch(audio_states)
+        visual_hidden = self.visual_branch(visual_tokens, visual_attention_mask)
+        text_hidden = self.text_branch(text_states)
+        audio_hidden = self.audio_branch(audio_states)
         hiddens = [llm_hidden, visual_hidden, text_hidden, audio_hidden]
-        branch_logits = [llm_logits, visual_logits, text_logits, audio_logits]
 
         _, router_weights = self.router(hiddens)
         specialists = torch.stack(
@@ -229,42 +210,19 @@ class FourModalMoEClassifier(nn.Module):
         if labels is not None:
             labels = labels.long()
             losses["fusion"] = F.cross_entropy(logits.float(), labels)
-            per_sample_losses = [F.cross_entropy(item.float(), labels, reduction="none") for item in branch_logits]
-            mean_branch_losses = torch.stack([item.mean() for item in per_sample_losses])
-            branch_weights = mean_branch_losses.new_tensor(self.branch_loss_weights)
-            for name, branch_loss, weight in zip(
-                ("llm", "visual", "text", "audio"),
-                mean_branch_losses,
-                self.branch_loss_weights,
-            ):
-                if weight > 0:
-                    losses[name] = branch_loss
-            losses["modality"] = (mean_branch_losses * branch_weights).sum() / branch_weights.sum()
-
-            oracle_weights = torch.softmax(
-                -torch.stack(per_sample_losses, dim=-1).detach() / max(self.oracle_temperature, 1e-4), dim=-1
-            )
-            losses["router"] = F.kl_div(
-                router_weights.float().clamp_min(1e-8).log(), oracle_weights, reduction="batchmean"
-            )
-            mean_load = router_weights.float().mean(dim=0)
-            uniform = torch.full_like(mean_load, 1.0 / mean_load.numel())
-            losses["balance"] = F.kl_div(mean_load.clamp_min(1e-8).log(), uniform, reduction="sum")
-            total_loss = (
-                losses["fusion"]
-                + self.modality_loss_weight * losses["modality"]
-                + self.router_loss_weight * router_loss_scale * losses["router"]
-                + self.balance_loss_weight * losses["balance"]
-            )
+            llm_loss = F.cross_entropy(llm_logits.float(), labels)
+            if self.llm_loss_weight > 0:
+                losses["llm"] = llm_loss
+                losses["modality"] = llm_loss * self.llm_loss_weight
+            else:
+                losses["modality"] = llm_loss.new_zeros(())
+            total_loss = losses["fusion"] + self.modality_loss_weight * losses["modality"]
             losses["total"] = total_loss
 
         return FourModalMoEOutput(
             loss=total_loss,
             logits=logits,
             llm_logits=llm_logits,
-            visual_logits=visual_logits,
-            text_logits=text_logits,
-            audio_logits=audio_logits,
             router_weights=router_weights,
             losses=losses,
         )

@@ -27,29 +27,21 @@ fusion:
   transformer_layers: 2
   transformer_heads: 8
   transformer_ff_dim: 1024
-  expert_dim: 512
-  router_dim: 128
+  expert_dim: 768
+  router_dim: 256
   dropout: 0.1
-  router_temperature: 1.0
-  oracle_temperature: 0.5
-  modality_loss_weight: 0.3
+  modality_loss_weight: 0.5
   llm_loss_weight: 1.0
-  visual_loss_weight: 0.0
-  text_loss_weight: 1.0
-  audio_loss_weight: 0.0
-  router_loss_weight: 0.0
-  balance_loss_weight: 0.0
 
 training:
   epochs: 5
   batch_size: 1
   eval_batch_size: 1
   gradient_accumulation_steps: 4
-  lora_learning_rate: 2.0e-5
-  head_learning_rate: 1.0e-4
-  weight_decay: 0.01
+  lora_learning_rate: 4.0e-5
+  head_learning_rate: 2.0e-4
+  weight_decay: 0.05
   warmup_ratio: 0.1
-  router_warmup_steps: 100
   max_grad_norm: 1.0
   logging_steps: 10
   num_workers: 2
@@ -58,7 +50,7 @@ training:
   metric_for_best_model: macro_f1
   greater_is_better: true
   seed: 42
-  output_dir: /data2/573ops_ser/projects/videommd/outputs/trimodal_moe/fakett_qwen3_router_weighted_concat
+  output_dir: /data2/573ops_ser/projects/videommd/outputs/trimodal_moe/fakett_unconstrained_router_no_text_aux
 
 inference:
   split: test

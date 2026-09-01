@@ -68,7 +68,7 @@ def move_batch(batch: dict[str, Any], device: torch.device) -> dict[str, Any]:
     return {key: value.to(device, non_blocking=True) if isinstance(value, Tensor) else value for key, value in batch.items()}
 
 
-def model_inputs(batch: dict[str, Any], router_loss_scale: float = 1.0) -> dict[str, Any]:
+def model_inputs(batch: dict[str, Any]) -> dict[str, Any]:
     return {
         "input_ids": batch["input_ids"],
         "attention_mask": batch["attention_mask"],
@@ -78,7 +78,6 @@ def model_inputs(batch: dict[str, Any], router_loss_scale: float = 1.0) -> dict[
         "text_states": batch["text_states"],
         "audio_states": batch["audio_states"],
         "labels": batch["labels"],
-        "router_loss_scale": router_loss_scale,
     }
 
 
@@ -227,7 +226,7 @@ def evaluate(model: nn.Module, loader: DataLoader, device: torch.device, dtype: 
     evaluation_model = unwrap(model)
     evaluation_model.eval()
     confusion = torch.zeros((2, 2), device=device, dtype=torch.long)
-    branch_correct = torch.zeros(5, device=device, dtype=torch.long)
+    branch_correct = torch.zeros(2, device=device, dtype=torch.long)
     sample_count = torch.zeros(1, device=device, dtype=torch.long)
     router_sum = torch.zeros(4, device=device)
     loss_sum = torch.zeros(1, device=device)
@@ -240,9 +239,7 @@ def evaluate(model: nn.Module, loader: DataLoader, device: torch.device, dtype: 
         labels = batch["labels"]
         indices = labels * 2 + predictions
         confusion += torch.bincount(indices, minlength=4).reshape(2, 2)
-        for index, logits in enumerate(
-            (output.logits, output.llm_logits, output.visual_logits, output.text_logits, output.audio_logits)
-        ):
+        for index, logits in enumerate((output.logits, output.llm_logits)):
             branch_correct[index] += logits.argmax(dim=-1).eq(labels).sum()
         count = labels.numel()
         sample_count += count
@@ -258,9 +255,6 @@ def evaluate(model: nn.Module, loader: DataLoader, device: torch.device, dtype: 
             "loss": float((loss_sum / denominator).item()),
             "fusion_accuracy": float((branch_correct[0] / denominator).item()),
             "llm_accuracy": float((branch_correct[1] / denominator).item()),
-            "visual_accuracy": float((branch_correct[2] / denominator).item()),
-            "text_accuracy": float((branch_correct[3] / denominator).item()),
-            "audio_accuracy": float((branch_correct[4] / denominator).item()),
             "router_llm": float((router_sum[0] / denominator).item()),
             "router_visual": float((router_sum[1] / denominator).item()),
             "router_text": float((router_sum[2] / denominator).item()),
@@ -359,7 +353,6 @@ def train(config: dict[str, Any], resume: str | Path | None = None) -> None:
 
     autocast_enabled = dtype != torch.float32
     log_steps = int(training_cfg.get("logging_steps", 10))
-    router_warmup = int(training_cfg.get("router_warmup_steps", updates_per_epoch))
     best_metric_name = str(training_cfg.get("metric_for_best_model", "macro_f1"))
     greater_is_better = bool(training_cfg.get("greater_is_better", True))
     best_metric = -math.inf if greater_is_better else math.inf
@@ -387,10 +380,9 @@ def train(config: dict[str, Any], resume: str | Path | None = None) -> None:
             batch = move_batch(batch, device)
             should_step = (micro_step + 1) % accumulation == 0 or micro_step + 1 == len(train_loader)
             sync_context = nullcontext() if should_step or not isinstance(model, DistributedDataParallel) else model.no_sync()
-            router_scale = min(1.0, (global_step + 1) / max(1, router_warmup))
             with sync_context:
                 with torch.autocast("cuda", dtype=dtype, enabled=autocast_enabled):
-                    output = model(**model_inputs(batch, router_scale))
+                    output = model(**model_inputs(batch))
                     loss = output.loss / accumulation
                 loss.backward()
             for name, value in output.losses.items():
@@ -399,9 +391,6 @@ def train(config: dict[str, Any], resume: str | Path | None = None) -> None:
             for name, logits in (
                 ("accuracy_fusion", output.logits),
                 ("accuracy_llm", output.llm_logits),
-                ("accuracy_visual", output.visual_logits),
-                ("accuracy_text", output.text_logits),
-                ("accuracy_audio", output.audio_logits),
             ):
                 accuracy = logits.argmax(dim=-1).eq(labels).float().mean()
                 running[name] = running.get(name, 0.0) + float(accuracy.item())
@@ -420,7 +409,7 @@ def train(config: dict[str, Any], resume: str | Path | None = None) -> None:
                 payload = {
                     f"train/{key}": value / max(1, running_batches) for key, value in running.items()
                 }
-                payload.update({"epoch": epoch, "step": global_step, "router_scale": router_scale})
+                payload.update({"epoch": epoch, "step": global_step})
                 print(json.dumps(payload, ensure_ascii=False), flush=True)
                 running.clear()
                 running_batches = 0
@@ -511,9 +500,6 @@ def predict(config: dict[str, Any], checkpoint: str | Path, output_path: str | P
         logits_sets = {
             "fusion": output.logits,
             "llm": output.llm_logits,
-            "visual": output.visual_logits,
-            "text": output.text_logits,
-            "audio": output.audio_logits,
         }
         probabilities = {name: logits.float().softmax(dim=-1).cpu() for name, logits in logits_sets.items()}
         weights = output.router_weights.float().cpu()

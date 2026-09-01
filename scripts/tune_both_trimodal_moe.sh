@@ -7,8 +7,8 @@ cd "${repo_root}"
 num_trials="${1:-12}"
 python_bin="${PYTHON_BIN:-python}"
 output_base="${TUNING_OUTPUT_ROOT:-/data2/573ops_ser/projects/videommd/outputs/trimodal_moe/tuning}"
-fakesv_output="${output_base}/fakesv_qwen3"
-fakett_output="${output_base}/fakett_qwen3"
+fakesv_output="${output_base}/fakesv_qwen3_no_va_heads"
+fakett_output="${output_base}/fakett_qwen3_no_va_heads"
 
 mkdir -p "${fakesv_output}" "${fakett_output}"
 
