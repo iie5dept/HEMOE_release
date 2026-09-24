@@ -125,12 +125,21 @@ class FourModalFeatureDataset(Dataset):
             raise KeyError(f"Qwen3 cache for {record.sample_id} has no text_last_token")
         if "audio_last_token" not in audio:
             raise KeyError(f"Qwen2-Audio cache for {record.sample_id} has no audio_last_token")
+        visual_tokens = visual["patch_tokens"]
+        if visual_tokens.ndim != 2:
+            raise ValueError(
+                f"DINO cache for {record.sample_id} must contain the single-key-frame token matrix "
+                f"[P, D] used by the 90.6 checkpoint, got {tuple(visual_tokens.shape)}. "
+                "Rebuild the original key-frame cache in a separate directory and pass its manifest "
+                "to export_evidence_features.py with --visual-manifest; do not flatten a newer "
+                "multi-frame cache for checkpoint analysis."
+            )
         return {
             "id": record.sample_id,
             "user_content": record.user_content,
             "video_path": str(record.video_path),
             "label": record.label,
-            "visual_tokens": visual["patch_tokens"],
+            "visual_tokens": visual_tokens,
             "text_states": text["text_last_token"],
             "audio_states": audio["audio_last_token"],
         }
